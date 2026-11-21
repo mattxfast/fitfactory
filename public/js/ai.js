@@ -67,7 +67,10 @@ async function openAiDialog(mode, pid, wodId = null, week = null, origin = mode 
       plural +
       "). Les WOD manquants sont créés (« WOD 1 », « WOD 2 »…).";
     f.per_week.value = Math.min(7, Math.max(1, visibleWods(pid).length || 3));
+    $("#aiintro").textContent += " La thématique / structure de chaque WOD est ajoutée à sa consigne.";
   } else {
+    // La thématique / structure du WOD est reprise dans la consigne particulière (modifiable avant de générer).
+    f.instructions.value = wodTheme(w);
     $("#aititle").textContent = "Générer « " + (w?.name || "WOD") + " »";
     $("#aiintro").textContent =
       mode === "wod"
@@ -145,9 +148,17 @@ async function generateProgram(f, request) {
     names.add(name.toLowerCase());
     targets.push({id: created.id, name});
   }
+  // Chaque WOD reçoit sa propre thématique / structure en tête de la consigne.
   const done = await runSlots(
     slots.map(s => ({week: s.week, wod: targets[s.index]})),
-    request
+    request,
+    wod => ({
+      ...request,
+      instructions: [wodTheme(visibleWods(pid).find(x => x.id === wod.id)), request.instructions]
+        .filter(Boolean)
+        .join(" — ")
+        .slice(0, 600),
+    })
   );
   (window.cfExpandedWodProgramming || (window.cfExpandedWodProgramming = new Set())).add(targets[0].id);
   return doneMessage(done);
@@ -168,7 +179,12 @@ const doneMessage = done =>
   aiCancelled ? "Génération interrompue : " + done + " WOD écrits." : done + " WOD générés.";
 // Génère les créneaux l’un après l’autre, dans l’ordre des semaines : le contenu déjà écrit sert de contexte au
 // suivant (progression, variété).
-async function runSlots(slots, request) {
+// Thématique / structure d’un WOD (champ du WOD), reprise dans la consigne particulière de la génération.
+const wodTheme = w =>
+  String(w?.planned_comment || "")
+    .trim()
+    .slice(0, 600);
+async function runSlots(slots, request, requestFor = () => request) {
   let done = 0;
   for (const s of slots) {
     if (aiCancelled) break;
@@ -184,7 +200,7 @@ async function runSlots(slots, request) {
         fmt(s.week) +
         "… (ne ferme pas l’application)"
     );
-    await aiGenerate(w.id, s.week, request);
+    await aiGenerate(w.id, s.week, requestFor(w));
     done++;
   }
   return done;

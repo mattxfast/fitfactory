@@ -1,7 +1,7 @@
 // Génération de WOD par IA (API OpenAI, sans dépendance) : options de séance, prompt modèle, appel et mise en texte.
 // Le Worker (src/worker.js) lit le contexte en base (profil, records, programme, séances) et enregistre le résultat.
 
-export const AI_PROMPT_VERSION = "wod-seance-v2";
+export const AI_PROMPT_VERSION = "wod-seance-v3";
 export const AI_DAILY_LIMIT = 100; // générations par utilisateur et par 24 h (maîtrise du coût)
 export const AI_DEFAULT_MODEL = "gpt-5-mini";
 export const AI_LEVELS = {
@@ -63,7 +63,7 @@ export function aiOptionsInput(b) {
     blocks,
     technique_movements: technique,
     force_movements: force,
-    instructions: text(b.instructions, 300),
+    instructions: text(b.instructions, 600),
   };
 }
 
@@ -105,9 +105,8 @@ export function buildPrompt(c) {
     "",
     "## Programme",
     `${c.program.name} — semaine ${c.weekIndex}/${c.weekCount} (du ${c.weekLabel})`,
-    "WOD à écrire : " +
-      c.wod.name +
-      (c.wod.planned_comment ? " — consignes : " + text(c.wod.planned_comment, 400) : ""),
+    // La thématique / structure du WOD arrive par la consigne particulière (pré-remplie et modifiable dans la fenêtre).
+    "WOD à écrire : " + c.wod.name,
     "Mouvements à travailler dans le programme : " + (c.focus.length ? c.focus.join(", ") : "aucun en particulier"),
     "",
     "## Programmation déjà écrite (semaines récentes et cette semaine)",

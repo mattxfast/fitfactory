@@ -9,7 +9,7 @@ dire « fais l'idée 7 ».
 - Nouvelle idée : l'ajouter dans la bonne rubrique avec le **numéro suivant le plus grand existant**.
 - *En italique* : la décision de Matt quand il y en a une.
 
-Prochain numéro libre : **36**
+Prochain numéro libre : **37**
 
 ## Fiabilité et exploitation
 
@@ -44,6 +44,7 @@ Prochain numéro libre : **36**
 - [ ] **33.** Widget iOS (écran d'accueil / écran verrouillé) : WOD du jour, prochaine séance, séances de la semaine. Demande une vraie app iPhone (Swift, WidgetKit) en plus de l'app web, un compte Apple Developer (99 €/an) et une connexion par jeton pour l'app native. *À décider par Matt.*
 - [ ] **34.** Application Apple Watch : chrono de WOD au poignet (rounds, EMOM, Tabata) avec vibrations, WOD du jour affiché, séance enregistrée à la fin. Même prérequis que l'idée 33 (app native, compte Apple Developer) ; à faire avec ou après le widget. *À décider par Matt.*
 - [x] **35.** Interface simplifiée, au choix dans Mon compte → Apparence : page Séances réduite à l'historique puis aux mouvements travaillés (sans rubriques WOD de la programmation, de la box ni WOD du jour), onglet Programmes masqué ; le formulaire de séance propose toujours tous les WOD. — fait le 21/11/2026
+- [x] **36.** Programmes : champ du WOD renommé « Thématique / Structure », repris dans la consigne particulière de la génération par IA (un WOD ou tout le programme). — fait le 21/11/2026
 - [x] **36.** Taguer des partenaires sur une séance : invitation (pastille rouge sur l'onglet Séances, rubrique « Séances partagées »), acceptation qui copie la séance dans son historique (copie indépendante) ou refus. — fait le 21/11/2026
 - [x] **37.** Notification push quand on est tagué sur une séance (en plus de la pastille rouge), pour les comptes qui ont activé les notifications. — fait le 21/11/2026
 

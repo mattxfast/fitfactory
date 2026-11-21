@@ -377,18 +377,14 @@ function boxWodPlanning(d) {
             0,
             types.findIndex(x => x.id === w.type_id)
           );
-          // Un WOD en blocs : une carte indépendante par bloc (couleur propre au bloc), le type et le nom du WOD
-          // rappelés en petit ; un WOD sans blocs : une seule carte, à la couleur de son type.
-          const parts = boxWodBlockParts(w),
-            head = `<small>${esc(w.type_name || "WOD")} · ${esc(w.name)}</small>`;
-          if (parts.length && parts[0][0])
-            return parts
-              .map(
-                ([label, text]) =>
-                  `<button type="button" class="box-planning-wod part-${BOX_WOD_BLOCKS.find(([, l]) => l === label)[0]}" data-edit-boxwod="${w.id}" title="Modifier">${head}<b>${esc(label)}</b><span>${esc(text)}</span></button>`
-              )
-              .join("");
-          return `<button type="button" class="box-planning-wod wod-block-${t % 6}" data-edit-boxwod="${w.id}" title="Modifier"><small>${esc(w.type_name || "WOD")}</small><b>${esc(w.name)}</b>${parts.length ? `<span>${esc(parts[0][1])}</span>` : ""}</button>`;
+          return `<button type="button" class="box-planning-wod wod-block-${t % 6}" data-edit-boxwod="${w.id}" title="Modifier"><small>${esc(w.type_name || "WOD")}</small><b>${esc(w.name)}</b>${boxWodBlockParts(
+            w
+          )
+            .map(
+              ([label, text]) =>
+                `<span class="box-planning-part">${label ? `<em>${esc(label)}</em>` : ""}${esc(text)}</span>`
+            )
+            .join("")}</button>`;
         })
         .join("") || `<p class="box-planning-empty">Pas de WOD</p>`
     }</div></section>`;

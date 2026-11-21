@@ -5359,10 +5359,24 @@ button:active:not(:disabled) {
 .box-planning-wod b {
   font: 700 15px Manrope;
 }
-.box-planning-wod span {
+/* Chaque bloc du WOD (Échauffement, Force / Skill, Metcon, Finisher) séparé par un trait, titre en petites capitales. */
+.box-planning-part {
+  display: grid;
+  gap: 2px;
+  padding-top: 8px;
+  margin-top: 4px;
+  border-top: 1px solid color-mix(in srgb, var(--block-color) 45%, transparent);
   white-space: pre-line;
   font-size: 14px;
   line-height: 1.4;
+}
+.box-planning-part em {
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted-strong);
 }
 .box-planning-empty {
   margin: 0;
@@ -5370,20 +5384,7 @@ button:active:not(:disabled) {
   color: var(--muted);
   text-align: center;
 }
-/* Carte d'un bloc de WOD : une couleur par bloc (échauffement, force / skill, metcon, finisher). */
-.part-warmup {
-  --block-color: #e8743b;
-}
-.part-strength {
-  --block-color: #f2c12e;
-}
-.part-metcon {
-  --block-color: #3b82f6;
-}
-.part-finisher {
-  --block-color: #22a06b;
-}
-/* Carte d'un WOD sans blocs : couleur selon la position de son type de WOD dans la liste de la box. */
+/* Couleur d'un bloc selon la position de son type de WOD dans la liste de la box. */
 .wod-block-0 {
   --block-color: #e8743b;
 }

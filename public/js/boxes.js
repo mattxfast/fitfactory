@@ -76,14 +76,22 @@ function renderMyBoxes() {
       : m.status === "pending"
         ? "membre · en attente de validation par la box"
         : "membre";
-  const rows = [...boxMemberships].sort(
-    (a, b) => boxName(a.box_id).localeCompare(boxName(b.box_id), "fr") || a.role.localeCompare(b.role)
-  );
-  $("#myboxlist").innerHTML = rows.length
-    ? rows
+  // Une ligne par box : icône athlète (membre) et/ou icône gestionnaire, celles de la barre du haut, chacune avec
+  // son bouton pour quitter ce rôle (ou annuler la demande).
+  const boxIdsSorted = [...new Set(boxMemberships.map(m => m.box_id))].sort((a, b) =>
+      boxName(a).localeCompare(boxName(b), "fr")
+    ),
+    role = m =>
+      `<span class="box-role ${m.status === "pending" ? "pending" : ""}" title="${esc(label(m))}"><span class="box-role-icon" role="img" aria-label="${esc(label(m))}">${m.role === "manager" ? MANAGER_ICON : ATHLETE_ICON}</span>${m.status === "pending" ? `<small>en attente</small>` : ""}<button type="button" class="smallbtn delete" data-leave-box="${m.box_id}" data-role="${m.role}" aria-label="${m.status === "pending" ? "Annuler la demande" : m.role === "manager" ? "Ne plus gérer cette box" : "Quitter la box"}" title="${m.status === "pending" ? "Annuler la demande" : m.role === "manager" ? "Ne plus gérer cette box" : "Quitter la box"}">${BOX_ICONS.del}</button></span>`;
+  $("#myboxlist").innerHTML = boxIdsSorted.length
+    ? boxIdsSorted
         .map(
-          m =>
-            `<div class="admin-row"><span>${esc(boxName(m.box_id))} <small class="muted">· ${label(m)}</small></span><button type="button" class="smallbtn delete" data-leave-box="${m.box_id}" data-role="${m.role}" aria-label="${m.status === "pending" ? "Annuler la demande" : "Quitter"}" title="${m.status === "pending" ? "Annuler la demande" : m.role === "manager" ? "Ne plus gérer cette box" : "Quitter la box"}">${BOX_ICONS.del}</button></div>`
+          id =>
+            `<div class="admin-row"><span>${esc(boxName(id))}</span><span class="box-roles">${["member", "manager"]
+              .map(r => boxMemberships.find(m => m.box_id === id && m.role === r))
+              .filter(Boolean)
+              .map(role)
+              .join("")}</span></div>`
         )
         .join("")
     : `<p class="muted">Tu n’as rejoint aucune box.</p>`;

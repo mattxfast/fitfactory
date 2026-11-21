@@ -4556,6 +4556,38 @@ button:active:not(:disabled) {
 .box-membership-list .admin-row:first-child {
   border-top: 0;
 }
+/* Rôles dans une box (Mes box) : icône athlète / gestionnaire de la barre du haut, et bouton pour quitter ce rôle. */
+.box-roles {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.box-role {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 3px 3px 9px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+}
+.box-role-icon svg {
+  display: block;
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.box-role.pending .box-role-icon {
+  opacity: 0.55;
+}
+.box-role small {
+  color: var(--muted);
+  font-size: 11px;
+}
 #boxcard label {
   margin: 0;
 }

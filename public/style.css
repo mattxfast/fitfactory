@@ -5278,10 +5278,31 @@ button:active:not(:disabled) {
   }
 }
 /* Espace gestionnaire, page WOD : choix Liste / Planning et planning de la semaine (une colonne par jour). */
-.box-wod-views,
-.box-wod-types {
-  justify-content: center;
+/* Liste / Planning : deux carrés côte à côte, chacun la moitié de la largeur. */
+.box-wod-views {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   margin: 0 0 var(--section-content-gap);
+}
+.box-wod-views span {
+  display: block;
+  padding: 12px;
+  border-radius: 12px;
+  text-align: center;
+}
+/* Filtre par type : une seule ligne qui défile horizontalement, même avec beaucoup de types. */
+.box-wod-types {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  margin: 0 0 var(--section-content-gap);
+  padding-bottom: 2px;
+  scrollbar-width: none;
+}
+.box-wod-types::-webkit-scrollbar {
+  display: none;
+}
+.box-wod-types label {
+  flex: 0 0 auto;
 }
 /* Le planning déborde de la largeur de page pour profiter des grands écrans ; sur téléphone, défilement horizontal. */
 #boxwodboard.planning .box-planning {

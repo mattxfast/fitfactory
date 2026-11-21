@@ -35,7 +35,7 @@ Prochain numéro libre : **40**
 - [ ] **11.** Objectifs : nombre de séances par semaine ou PR cible, avec une jauge. *Pas maintenant.*
 - [ ] **12.** Calculateur de charges : pourcentages des PR (WOD « à 75 % du 1RM »).
 - [ ] **13.** Rappeler le dernier commentaire laissé sur le même WOD au moment d'enregistrer une séance.
-- [x] **14.** WOD du jour : WOD de référence tirés au hasard (Fran, Cindy, Murph…), sans IA, gratuits et hors ligne. Résultats suivis dans la page PR (rubrique Benchmarks). — fait le 21/11/2026
+- [x] **14.** WOD du jour : WOD de référence tirés au hasard (Fran, Cindy, Murph…), sans IA, gratuits et hors ligne. Résultats suivis dans la page PR (rubrique Benchmarks). — fait le 21/11/2026 (`1127792`)
 - [ ] **15.** WOD du jour : mode « Mon coach » (WOD proposé chaque matin, semaine équilibrée, notification possible).
 - [ ] **16.** WOD du jour : privilégier les mouvements peu travaillés ces dernières semaines.
 - [ ] **18.** Affichage dynamique sur un écran dans la box (WOD du jour, scores, anniversaires, mot du jour, événements) : voir le détail plus bas.

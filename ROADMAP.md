@@ -9,7 +9,7 @@ dire « fais l'idée 7 ».
 - Nouvelle idée : l'ajouter dans la bonne rubrique avec le **numéro suivant le plus grand existant**.
 - *En italique* : la décision de Matt quand il y en a une.
 
-Prochain numéro libre : **38**
+Prochain numéro libre : **39**
 
 ## Fiabilité et exploitation
 
@@ -43,6 +43,7 @@ Prochain numéro libre : **38**
 - [x] **32.** PR Engine en « temps sur une distance » ou « distance dans un temps » (allure au km / au 500 m, historique, courbe) et pilier Engine du score de forme. — fait le 20/11/2026
 - [ ] **33.** Widget iOS (écran d'accueil / écran verrouillé) : WOD du jour, prochaine séance, séances de la semaine. Demande une vraie app iPhone (Swift, WidgetKit) en plus de l'app web, un compte Apple Developer (99 €/an) et une connexion par jeton pour l'app native. *À décider par Matt.*
 - [ ] **34.** Application Apple Watch : chrono de WOD au poignet (rounds, EMOM, Tabata) avec vibrations, WOD du jour affiché, séance enregistrée à la fin. Même prérequis que l'idée 33 (app native, compte Apple Developer) ; à faire avec ou après le widget. *À décider par Matt.*
+- [ ] **38.** Widget iOS « léger », sans app native : l'app gratuite Scriptable affiche un widget (écran d'accueil ou verrouillé) à partir d'un petit script JavaScript fourni par myFitFactory, qui lit une route en lecture seule (WOD du jour, WOD de la semaine, séances faites) protégée par un jeton personnel révocable, généré dans « Mon compte ». Pas de compte Apple Developer ; mise à jour du widget toutes les 15 min à quelques heures selon iOS. Alternative à l'idée 33. *À décider par Matt.*
 - [x] **35.** Interface simplifiée, au choix dans Mon compte → Apparence : page Séances réduite à l'historique puis aux mouvements travaillés (sans rubriques WOD de la programmation, de la box ni WOD du jour), onglet Programmes masqué ; le formulaire de séance propose toujours tous les WOD. — fait le 21/11/2026
 - [x] **36.** Programmes : champ du WOD renommé « Thématique / Structure », repris dans la consigne particulière de la génération par IA (un WOD ou tout le programme). — fait le 21/11/2026 (`f440f06`)
 - [x] **37.** Programmes : mouvements à travailler propres à chaque WOD, repris par la génération IA et cochés par défaut dans la séance. — fait le 21/11/2026 (`247cc58`)

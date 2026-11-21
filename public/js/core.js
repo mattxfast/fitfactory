@@ -26,7 +26,9 @@ let tab = "login",
   weekCompetition = false,
   weeklyPlans = [],
   weeklyWodPrograms = [],
-  boxWods = [];
+  boxWods = [],
+  sessionTags = [], // partenaires tagués sur mes séances de la semaine
+  pendingTags = []; // séances où je suis tagué, en attente de ma réponse
 const today = () => {
   const d = new Date();
   return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);

@@ -5,7 +5,7 @@ async function load() {
   try {
     const from = selectedWeekStart || mondayOf(today()),
       to = addDays(from, 6);
-    const [a, mc, p, w, pr, bx, prefs] = await Promise.all([
+    const [a, mc, p, w, pr, bx, prefs, tg] = await Promise.all([
       api("/activities"),
       api("/movement-catalog"),
       api("/program-data"),
@@ -13,7 +13,10 @@ async function load() {
       api("/prs"),
       api("/boxes"),
       api("/preferences"),
+      api("/session-tags"),
     ]);
+    sessionTags = w.tags || [];
+    pendingTags = tg.tags || [];
     activities = a.activities;
     movementCatalog = mc.movements;
     programs = p.programs;
@@ -48,8 +51,10 @@ async function load() {
 async function loadSessions() {
   const from = selectedWeekStart || mondayOf(today()),
     to = addDays(from, 6),
-    w = await api("/week-data?from=" + from + "&to=" + to);
+    [w, tg] = await Promise.all([api("/week-data?from=" + from + "&to=" + to), api("/session-tags")]);
   sessions = w.sessions;
+  sessionTags = w.tags || [];
+  pendingTags = tg.tags || [];
   movementChecks = w.checks;
   catalogChecks = w.catalogChecks || [];
   weeklyPlans = w.plans;
@@ -85,6 +90,8 @@ document.querySelectorAll(".navtab[data-view]").forEach(b => (b.onclick = () => 
 // Origine du WOD d’une séance, affichée dans l’historique : nom de la box, WOD du jour, programmation, ou séance libre
 // (« Autres »).
 function sessionSource(s) {
+  if (s.shared_from_first_name)
+    return "Partagée par " + s.shared_from_first_name + " " + String(s.shared_from_last_name || "").slice(0, 1) + ".";
   if (s.box_wod_id) return s.box_name || "WOD de la box";
   if (s.daily_wod_id) return "WOD du jour";
   if (s.wod_name === "Autres") return "Séance libre";
@@ -150,6 +157,9 @@ function openSessionDetail(id) {
         .map(c => movementCatalog.find(m => m.id === c.catalog_movement_id)?.name),
     ].filter(Boolean),
     hasScore = s.score_value !== null && s.score_value !== undefined && s.score_type,
+    partners = sessionTags
+      .filter(t => t.session_id === s.id)
+      .map(t => partnerName(t) + (t.status === "accepted" ? "" : " (" + PARTNER_STATUS[t.status] + ")")),
     part = (label, text) => `<p><b>${label}</b> ${esc(text)}</p>`;
   $("#sessiondetailtitle").textContent = s.wod_name;
   $("#sessiondetailmeta").textContent = [
@@ -168,7 +178,8 @@ function openSessionDetail(id) {
             formatScore(s.score_type, s.score_value) + (s.score_category_name ? " · " + s.score_category_name : "")
           )
         : "") +
-      (movements.length ? part("Mouvements travaillés :", [...new Set(movements)].join(", ")) : "") ||
+      (movements.length ? part("Mouvements travaillés :", [...new Set(movements)].join(", ")) : "") +
+      (partners.length ? part("Partenaires :", partners.join(", ")) : "") ||
     `<p class="muted">Pas de détail pour cette séance.</p>`;
   $("#sessiondetailedit").onclick = () => {
     $("#sessiondetaildialog").close();
@@ -315,6 +326,10 @@ function renderWeek() {
       `<div class="weekbar card">${nav}</div><div class="weekstats card"><div class="weekstat weekstat-sessions"><strong>${week.length}</strong><span>Nombre de séances</span></div><div class="weekstat weekstat-program"><strong>${done.length}/${ws.length}</strong><span>Nombre de séances de la programmation</span></div><button id="addsession" class="primary addsession-compact" aria-label="Ajouter une séance" title="Ajouter une séance" ${future ? "disabled" : ""}>＋</button><label class="competition-toggle"><span>Comp</span><input type="checkbox" id="weekcompetition" ${weekCompetition ? "checked" : ""}></label></div>${weekProgramSection(p, week, folded, from)}${weekBoxSection(week, folded)}${weekDailySection(from, folded)}${weekMovementsSection(week, programMovements, folded)}`;
   }
   $("#weekafter").innerHTML = simple ? weekMovementsSection(week, [], folded) : "";
+  // Séances où l’on est tagué : rubrique en tête de page et pastille rouge sur l’onglet Séances.
+  $("#weekboard .weekbar").insertAdjacentHTML("afterend", weekInvitesSection());
+  $('.navtab[data-view="sessions"]').classList.toggle("has-alert", pendingTags.length > 0);
+  bindInvites();
   $("#view-sessions")
     .querySelectorAll("[data-session-fold]")
     .forEach(section => {
@@ -402,6 +417,39 @@ function renderWeek() {
 // fermeture et un cadre de focus reste affiché. Ouverte au clavier (Entrée, Espace : e.detail = 0), elle le garde.
 function blurAfterTap(el, e) {
   if (e.detail) el.blur();
+}
+// Invitations : un partenaire m’a tagué sur sa séance ; ✓ l’ajoute à mon historique (copie indépendante), × la refuse.
+function weekInvitesSection() {
+  if (!pendingTags.length) return "";
+  return `<section class="session-fold session-invites"><div class="weekheading"><h2>Séances partagées</h2><span>${pendingTags.length}</span></div><div class="session-fold-body"><div class="weekwodlist">${pendingTags
+    .map(
+      t =>
+        `<article class="weekwod card"><div class="weekcount"><button type="button" class="smallbtn" data-invite-accept="${esc(t.id)}" aria-label="Ajouter à mon historique" title="Ajouter à mon historique"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg></button><button type="button" class="smallbtn delete" data-invite-decline="${esc(t.id)}" aria-label="Refuser" title="Refuser"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12"/><path d="M18 6 6 18"/></svg></button></div><div class="weekwod-text"><b>${esc(partnerName(t))} t’a tagué</b><p class="wod-preview">${esc(fmt(t.session_date) + " · " + t.wod_name + (t.actual_comment ? "\n" + t.actual_comment : ""))}</p></div></article>`
+    )
+    .join("")}</div></div></section>`;
+}
+function bindInvites() {
+  const answer = async (id, action) => {
+    try {
+      const d = await sendApi("/session-tags/" + id + "/" + action, "POST");
+      if (action === "accept") selectedWeekStart = mondayOf(d.session_date);
+      await loadSessions();
+      toast(action === "accept" ? "Séance ajoutée à ton historique." : "Invitation refusée.");
+    } catch (x) {
+      toast(x.offline ? OFFLINE_MESSAGE : x.message);
+    }
+  };
+  $("#weekboard")
+    .querySelectorAll("[data-invite-accept]")
+    .forEach(b => (b.onclick = () => answer(b.dataset.inviteAccept, "accept")));
+  $("#weekboard")
+    .querySelectorAll("[data-invite-decline]")
+    .forEach(
+      b =>
+        (b.onclick = () => {
+          if (confirm("Refuser cette séance partagée ?")) answer(b.dataset.inviteDecline, "decline");
+        })
+    );
 }
 // WOD de la programmation en fenêtre (même fenêtre que le WOD du jour) : contenu complet de la semaine.
 function openProgramWodDetail(wodId, week) {

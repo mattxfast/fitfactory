@@ -707,6 +707,7 @@ body.modal-open {
   margin: 0;
 }
 .navtab {
+  position: relative;
   flex: 1;
   max-width: 240px;
   display: flex;
@@ -729,6 +730,17 @@ body.modal-open {
 .navtab[hidden],
 .navtabs[hidden] {
   display: none;
+}
+/* Séances partagées en attente : pastille rouge sur l'onglet Séances. */
+.navtab.has-alert::after {
+  content: "";
+  position: absolute;
+  top: 6px;
+  left: calc(50% + 10px);
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--danger);
 }
 .navtab.active {
   color: var(--nav-active);
@@ -4605,6 +4617,32 @@ button:active:not(:disabled) {
 .form-block label:not(.movement-check),
 #sessionform .form-block .session-time-row label {
   margin: 10px 0 0;
+}
+/* Partenaires tagués d'une séance : étiquettes (avec × pour retirer) et résultats de recherche. */
+.partner-chips,
+.partner-results {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.partner-chips:not(:empty) {
+  margin-top: 10px;
+}
+.partner-results:not(:empty) {
+  margin-top: 8px;
+}
+.partner-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.partner-chip button {
+  padding: 0 2px;
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
 }
 /* Textes d'aide et listes de résultats d'un bloc : même écart que les champs. */
 .form-block > p,

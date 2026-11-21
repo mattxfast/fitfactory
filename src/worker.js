@@ -490,6 +490,19 @@ async function ensureV2Schema(env) {
       if (!columns.results.some(column => column.name === "interface_mode"))
         await env.DB.prepare("ALTER TABLE users ADD COLUMN interface_mode TEXT NOT NULL DEFAULT 'advanced'").run();
     });
+    await runMigration("v31-session-tags", async () => {
+      // Partenaires tagués sur une séance : invitation en attente, acceptée (copie de la séance dans l'historique du
+      // partenaire, qui garde la trace de l'auteur) ou refusée.
+      await env.DB.batch(
+        [
+          "CREATE TABLE IF NOT EXISTS session_tags (id TEXT PRIMARY KEY, session_id TEXT NOT NULL REFERENCES training_sessions(id) ON DELETE CASCADE, from_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, to_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, status TEXT NOT NULL DEFAULT 'pending', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, responded_at TEXT, UNIQUE(session_id,to_user_id))",
+          "CREATE INDEX IF NOT EXISTS session_tags_to ON session_tags(to_user_id,status)",
+        ].map(sql => env.DB.prepare(sql))
+      );
+      const columns = await env.DB.prepare("PRAGMA table_info(training_sessions)").all();
+      if (!columns.results.some(column => column.name === "shared_from_user_id"))
+        await env.DB.prepare("ALTER TABLE training_sessions ADD COLUMN shared_from_user_id TEXT").run();
+    });
   })().catch(err => {
     schemaReady = null;
     throw err;
@@ -782,7 +795,22 @@ const boxRole = (e, userId, boxId, role) =>
     .first();
 // Séances : WOD du programme, « Autres » ou WOD d'une box (avec score et catégorie).
 const SESSION_SELECT =
-  "SELECT s.*,a.name AS activity_name,COALESCE(bw.name,dw.title,CASE WHEN w.name='__AUTRES__' THEN 'Autres' ELSE w.name END) AS wod_name,COALESCE(bw.content,dw.content,w.planned_comment) AS planned_comment,p.name AS program_name,bw.box_id,bw.wod_date AS box_wod_date,bw.score_type,bx.name AS box_name,bc.name AS score_category_name,dw.wod_date AS daily_wod_date FROM training_sessions s JOIN program_wods w ON w.id=s.wod_id JOIN programs p ON p.id=s.program_id LEFT JOIN activities a ON a.id=s.activity_id LEFT JOIN box_wods bw ON bw.id=s.box_wod_id LEFT JOIN boxes bx ON bx.id=bw.box_id LEFT JOIN box_categories bc ON bc.id=s.score_category_id LEFT JOIN daily_wods dw ON dw.id=s.daily_wod_id AND dw.user_id=s.user_id WHERE s.user_id=?";
+  "SELECT s.*,a.name AS activity_name,COALESCE(bw.name,dw.title,CASE WHEN w.name='__AUTRES__' THEN 'Autres' ELSE w.name END) AS wod_name,COALESCE(bw.content,dw.content,w.planned_comment) AS planned_comment,p.name AS program_name,bw.box_id,bw.wod_date AS box_wod_date,bw.score_type,bx.name AS box_name,bc.name AS score_category_name,dw.wod_date AS daily_wod_date,su.first_name AS shared_from_first_name,su.last_name AS shared_from_last_name FROM training_sessions s JOIN program_wods w ON w.id=s.wod_id JOIN programs p ON p.id=s.program_id LEFT JOIN activities a ON a.id=s.activity_id LEFT JOIN box_wods bw ON bw.id=s.box_wod_id LEFT JOIN boxes bx ON bx.id=bw.box_id LEFT JOIN box_categories bc ON bc.id=s.score_category_id LEFT JOIN daily_wods dw ON dw.id=s.daily_wod_id AND dw.user_id=s.user_id LEFT JOIN users su ON su.id=s.shared_from_user_id WHERE s.user_id=?";
+// Partenaires tagués sur une séance (10 au plus, sans l'auteur) ; null si la requête n'en parle pas (inchangés).
+function sessionTagIds(b, userId) {
+  if (!Array.isArray(b.tagged_user_ids)) return null;
+  return [...new Set(b.tagged_user_ids.map(String))]
+    .filter(id => /^[\w-]{1,64}$/.test(id) && id !== userId)
+    .slice(0, 10);
+}
+// Invitations à créer : seulement pour des comptes actifs, une seule par partenaire et par séance.
+function sessionTagStatements(e, userId, sessionId, ids) {
+  return ids.map(id =>
+    e.DB.prepare(
+      "INSERT OR IGNORE INTO session_tags(id,session_id,from_user_id,to_user_id) SELECT ?,?,?,id FROM users WHERE id=? AND is_active=1"
+    ).bind(uid(), sessionId, userId, id)
+  );
+}
 // Séance sur un WOD de box : l'utilisateur doit être membre validé de la box (sauf s'il modifie une séance
 // déjà enregistrée sur ce WOD). Le score dépend du type choisi par le gestionnaire.
 async function sessionBoxWod(e, userId, b, sessionId = null) {
@@ -2886,7 +2914,7 @@ async function api(r, e, p) {
       from = q.get("from"),
       to = q.get("to");
     if (!validDate(from) || !validDate(to) || from > to) return json({error: "Période invalide."}, 400);
-    const [s, f, pl, c, cc, bw, dw] = await Promise.all([
+    const [s, f, pl, c, cc, bw, dw, tg] = await Promise.all([
       e.DB.prepare(
         SESSION_SELECT + " AND s.session_date>=? AND s.session_date<=? ORDER BY s.session_date DESC,s.created_at DESC"
       )
@@ -2918,6 +2946,12 @@ async function api(r, e, p) {
       )
         .bind(u.id, from, to)
         .all(),
+      // Partenaires tagués sur mes séances de la période (nom et état de l'invitation).
+      e.DB.prepare(
+        "SELECT t.session_id,t.to_user_id,t.status,tu.first_name,tu.last_name FROM session_tags t JOIN training_sessions s ON s.id=t.session_id JOIN users tu ON tu.id=t.to_user_id WHERE t.from_user_id=? AND s.user_id=? AND s.session_date>=? AND s.session_date<=?"
+      )
+        .bind(u.id, u.id, from, to)
+        .all(),
     ]);
     return json({
       sessions: s.results,
@@ -2927,6 +2961,7 @@ async function api(r, e, p) {
       catalogChecks: cc.results,
       boxWods: bw,
       dailyWods: dw.results.map(dailyWodOut),
+      tags: tg.results,
     });
   }
   if (r.method === "GET" && p === "/api/sessions") {
@@ -3045,6 +3080,7 @@ async function api(r, e, p) {
         daily.id
       ),
       ...checks,
+      ...sessionTagStatements(e, u.id, id, sessionTagIds(b, u.id) || []),
     ]);
     return json({ok: true, id});
   }
@@ -3118,6 +3154,7 @@ async function api(r, e, p) {
       Array.isArray(b.catalog_movement_ids) ? b.catalog_movement_ids : [],
       isOther
     );
+    const tagIds = sessionTagIds(b, u.id);
     await e.DB.batch([
       e.DB.prepare(
         "UPDATE training_sessions SET program_id=?,wod_id=?,session_date=?,actual_comment=?,activity_id=?,duration_minutes=?,started_at=?,logged_at=?,box_wod_id=?,score_value=?,score_category_id=?,daily_wod_id=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND user_id=?"
@@ -3140,12 +3177,120 @@ async function api(r, e, p) {
         u.id
       ),
       ...checks,
+      // Partenaires : les invitations encore en attente qui ne sont plus dans la liste sont retirées ; celles déjà
+      // acceptées ou refusées restent (la séance du partenaire est la sienne).
+      ...(tagIds
+        ? [
+            e.DB.prepare(
+              "DELETE FROM session_tags WHERE session_id=? AND from_user_id=? AND status='pending'" +
+                (tagIds.length ? " AND to_user_id NOT IN (" + tagIds.map(() => "?").join(",") + ")" : "")
+            ).bind(m[1], u.id, ...tagIds),
+            ...sessionTagStatements(e, u.id, m[1], tagIds),
+          ]
+        : []),
     ]);
     return json({ok: true});
   }
   if (m && r.method === "DELETE") {
     await e.DB.prepare("DELETE FROM training_sessions WHERE id=? AND user_id=?").bind(m[1], u.id).run();
     return json({ok: true});
+  }
+  // Recherche d'un partenaire à taguer : comptes actifs avec prénom et nom, sans l'adresse e-mail (10 au plus).
+  if (r.method === "GET" && p === "/api/users/search") {
+    const q = String(new URL(r.url).searchParams.get("q") || "")
+      .trim()
+      .slice(0, 60);
+    if (q.length < 2) return json({users: []});
+    const x = await e.DB.prepare(
+      "SELECT id,first_name,last_name FROM users WHERE is_active=1 AND id<>? AND COALESCE(first_name,'')<>'' AND COALESCE(last_name,'')<>'' AND (first_name||' '||last_name LIKE ? ESCAPE '\\' OR last_name||' '||first_name LIKE ? ESCAPE '\\') ORDER BY first_name COLLATE NOCASE,last_name COLLATE NOCASE LIMIT 10"
+    )
+      .bind(u.id, ...Array(2).fill("%" + q.replace(/[\\%_]/g, c => "\\" + c) + "%"))
+      .all();
+    return json({users: x.results});
+  }
+  // Séances où l'on est tagué, en attente de réponse.
+  if (r.method === "GET" && p === "/api/session-tags") {
+    const x = await e.DB.prepare(
+      "SELECT t.id,s.session_date,s.actual_comment,COALESCE(bw.name,dw.title,CASE WHEN w.name='__AUTRES__' THEN 'Séance libre' ELSE w.name END) AS wod_name,fu.first_name,fu.last_name FROM session_tags t JOIN training_sessions s ON s.id=t.session_id JOIN program_wods w ON w.id=s.wod_id LEFT JOIN box_wods bw ON bw.id=s.box_wod_id LEFT JOIN daily_wods dw ON dw.id=s.daily_wod_id JOIN users fu ON fu.id=t.from_user_id WHERE t.to_user_id=? AND t.status='pending' ORDER BY s.session_date DESC,t.created_at DESC LIMIT 50"
+    )
+      .bind(u.id)
+      .all();
+    return json({tags: x.results});
+  }
+  // Réponse à une invitation : refus, ou acceptation qui copie la séance dans son propre historique (sur le WOD de
+  // la box si on en est membre, sinon en séance libre avec le nom du WOD en tête du contenu ; mouvements du catalogue
+  // repris). La copie est indépendante : la modifier ou la supprimer ne touche pas la séance de l'auteur.
+  m = p.match(/^\/api\/session-tags\/([\w-]+)\/(accept|decline)$/);
+  if (m && r.method === "POST") {
+    const tag = await e.DB.prepare(
+      "SELECT id,session_id,from_user_id FROM session_tags WHERE id=? AND to_user_id=? AND status='pending'"
+    )
+      .bind(m[1], u.id)
+      .first();
+    if (!tag) return json({error: "Invitation introuvable ou déjà traitée."}, 404);
+    const now = new Date().toISOString();
+    if (m[2] === "decline") {
+      await e.DB.prepare("UPDATE session_tags SET status='declined',responded_at=? WHERE id=? AND status='pending'")
+        .bind(now, tag.id)
+        .run();
+      return json({ok: true});
+    }
+    const src = await e.DB.prepare(
+      "SELECT s.session_date,s.actual_comment,s.activity_id,s.duration_minutes,s.started_at,s.box_wod_id,COALESCE(bw.name,dw.title,CASE WHEN w.name='__AUTRES__' THEN '' ELSE w.name END) AS wod_name,(SELECT 1 FROM box_members bm WHERE bm.box_id=bw.box_id AND bm.user_id=? AND bm.role='member' AND bm.status='approved') AS member FROM training_sessions s JOIN program_wods w ON w.id=s.wod_id LEFT JOIN box_wods bw ON bw.id=s.box_wod_id LEFT JOIN daily_wods dw ON dw.id=s.daily_wod_id WHERE s.id=? AND s.user_id=?"
+    )
+      .bind(u.id, tag.session_id, tag.from_user_id)
+      .first();
+    if (!src) return json({error: "Séance introuvable."}, 404);
+    const pid = await fallbackProgramId(e, u.id);
+    let other = await e.DB.prepare("SELECT id FROM program_wods WHERE program_id=? AND user_id=? AND name='__AUTRES__'")
+      .bind(pid, u.id)
+      .first();
+    if (!other) {
+      await e.DB.prepare(
+        "INSERT OR IGNORE INTO program_wods(id,program_id,user_id,name,planned_comment,sort_order) VALUES(?,?,?,'__AUTRES__','',999999)"
+      )
+        .bind(uid(), pid, u.id)
+        .run();
+      other = await e.DB.prepare("SELECT id FROM program_wods WHERE program_id=? AND user_id=? AND name='__AUTRES__'")
+        .bind(pid, u.id)
+        .first();
+    }
+    const box = src.box_wod_id && src.member ? src.box_wod_id : null,
+      comment = (box || !src.wod_name ? "" : src.wod_name + "\n") + (src.actual_comment || ""),
+      catalog = await e.DB.prepare(
+        "SELECT catalog_movement_id AS id FROM session_catalog_movement_checks WHERE session_id=? UNION SELECT pm.catalog_movement_id FROM session_movement_checks c JOIN program_movements pm ON pm.id=c.movement_id WHERE c.session_id=? AND pm.catalog_movement_id IS NOT NULL"
+      )
+        .bind(tag.session_id, tag.session_id)
+        .all(),
+      id = tag.id; // une seule copie par invitation, même si la réponse est envoyée deux fois
+    await e.DB.batch([
+      e.DB.prepare("UPDATE session_tags SET status='accepted',responded_at=? WHERE id=? AND status='pending'").bind(
+        now,
+        tag.id
+      ),
+      e.DB.prepare(
+        "INSERT OR IGNORE INTO training_sessions(id,program_id,wod_id,user_id,session_date,actual_comment,activity_id,duration_minutes,started_at,logged_at,box_wod_id,shared_from_user_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)"
+      ).bind(
+        id,
+        pid,
+        other.id,
+        u.id,
+        src.session_date,
+        comment.slice(0, 3000),
+        src.activity_id,
+        src.duration_minutes,
+        src.started_at,
+        now,
+        box,
+        tag.from_user_id
+      ),
+      ...catalog.results.map(c =>
+        e.DB.prepare(
+          "INSERT OR IGNORE INTO session_catalog_movement_checks(session_id,catalog_movement_id) VALUES(?,?)"
+        ).bind(id, c.id)
+      ),
+    ]);
+    return json({ok: true, id, session_date: src.session_date});
   }
   if (r.method === "GET" && p === "/api/stats") {
     const x = await e.DB.prepare(

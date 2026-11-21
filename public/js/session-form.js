@@ -328,8 +328,81 @@ function openSession(s = null, presetWodId = "") {
   syncSessionWod(s);
   if (!s) applyPlannedSessionNote();
   $("#sessiontitle").textContent = s ? "Modifier la séance" : "Enregistrer une séance";
+  setSessionPartners(s);
   $("#sessiondialog").showModal();
 }
+// Partenaires tagués : ceux déjà invités (avec l’état de l’invitation ; une invitation acceptée ou refusée ne se
+// retire plus) et ceux ajoutés par la recherche (comptes de l’application, par prénom et nom, 10 au plus).
+let sessionPartners = [],
+  partnerTimer = null;
+const partnerName = x => [x.first_name, x.last_name].filter(Boolean).join(" ");
+const PARTNER_STATUS = {pending: "en attente", accepted: "a accepté", declined: "a refusé"};
+function setSessionPartners(s) {
+  sessionPartners = s
+    ? sessionTags
+        .filter(t => t.session_id === s.id)
+        .map(t => ({id: t.to_user_id, name: partnerName(t), status: t.status}))
+    : [];
+  $("#partnersearch").value = "";
+  $("#partnerresults").innerHTML = "";
+  renderPartners();
+}
+function renderPartners() {
+  $("#partnerchips").innerHTML = sessionPartners
+    .map(
+      p =>
+        `<span class="tracked-tag partner-chip">${esc(p.name)}${p.status ? " · " + PARTNER_STATUS[p.status] : ""}${!p.status || p.status === "pending" ? `<button type="button" data-partner-remove="${esc(p.id)}" aria-label="Retirer ${esc(p.name)}" title="Retirer">×</button>` : ""}</span>`
+    )
+    .join("");
+  $("#partnerchips")
+    .querySelectorAll("[data-partner-remove]")
+    .forEach(
+      b =>
+        (b.onclick = () => {
+          sessionPartners = sessionPartners.filter(p => p.id !== b.dataset.partnerRemove);
+          renderPartners();
+        })
+    );
+}
+$("#partnersearch").onkeydown = e => {
+  if (e.key === "Enter") e.preventDefault(); // pas d’enregistrement de la séance depuis la recherche
+};
+$("#partnersearch").oninput = e => {
+  clearTimeout(partnerTimer);
+  const q = e.target.value.trim(),
+    results = $("#partnerresults");
+  if (q.length < 2) {
+    results.innerHTML = "";
+    return;
+  }
+  partnerTimer = setTimeout(async () => {
+    try {
+      const d = await sendApi("/users/search?q=" + encodeURIComponent(q), "GET");
+      if ($("#partnersearch").value.trim() !== q) return;
+      const list = d.users.filter(x => !sessionPartners.some(p => p.id === x.id));
+      results.innerHTML =
+        list
+          .map(
+            x =>
+              `<button type="button" class="smallbtn partner-result" data-partner-add="${esc(x.id)}">＋ ${esc(partnerName(x))}</button>`
+          )
+          .join("") || `<p class="muted">Personne trouvée.</p>`;
+      results.querySelectorAll("[data-partner-add]").forEach(
+        b =>
+          (b.onclick = () => {
+            if (sessionPartners.length >= 10) return toast("10 partenaires au plus par séance.");
+            const x = list.find(y => y.id === b.dataset.partnerAdd);
+            sessionPartners.push({id: x.id, name: partnerName(x)});
+            $("#partnersearch").value = "";
+            results.innerHTML = "";
+            renderPartners();
+          })
+      );
+    } catch (x) {
+      results.innerHTML = `<p class="muted">${esc(x.offline ? OFFLINE_MESSAGE : x.message)}</p>`;
+    }
+  }, 250);
+};
 let choiceWodId = "";
 function openWodChoice(wodId) {
   const planned = weeklyPlans.some(x => x.wod_id === wodId);
@@ -400,6 +473,7 @@ async function saveSession(event) {
     actual_comment: f.get("actual_comment"),
     movement_ids: [...form.querySelectorAll('input[name="movement_ids"]:checked')].map(x => x.value),
     catalog_movement_ids: [...form.querySelectorAll('input[name="catalog_movement_ids"]:checked')].map(x => x.value),
+    tagged_user_ids: sessionPartners.map(p => p.id),
   };
   // WOD de box : séance « hors programme » rattachée au WOD de la box, avec son score éventuel.
   const boxWod = selectedBoxWod();

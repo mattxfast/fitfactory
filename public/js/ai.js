@@ -11,7 +11,8 @@ let aiRunning = false,
 
 function aiBlocks(f) {
   const blocks = {};
-  for (const k of ["echauffement", "technique", "force", "metcon", "retour_au_calme"]) blocks[k] = f[k].checked;
+  // Pas de bloc « retour au calme » proposé dans la fenêtre : il n'est jamais demandé à l'IA.
+  for (const k of ["echauffement", "technique", "force", "metcon"]) blocks[k] = f[k].checked;
   return blocks;
 }
 // Liste repliable des mouvements imposés d’un bloc (technique ou force), 5 au plus.
@@ -87,7 +88,7 @@ async function openAiDialog(mode, pid, wodId = null, week = null, origin = mode 
     renderAiMovements("technique");
     renderAiMovements("force");
   }
-  ["echauffement", "technique", "force", "metcon", "retour_au_calme"].forEach(k => (f[k].onchange = syncAiForm));
+  ["echauffement", "technique", "force", "metcon"].forEach(k => (f[k].onchange = syncAiForm));
   syncAiForm();
   $("#aidialog").showModal();
   try {

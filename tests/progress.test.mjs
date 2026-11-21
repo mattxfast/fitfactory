@@ -1,0 +1,64 @@
+// Progression (page PR) et bilan mensuel : statistiques calculées par le serveur à partir des séances.
+import {test, before, after} from "node:test";
+import assert from "node:assert/strict";
+import {startWorker, client, ADMIN_EMAIL, today, mondayOf, addDays} from "./helpers.mjs";
+
+const PASSWORD = "MotDePasse-Test-123";
+let worker, admin, alice, bob, activityId, catalog;
+
+before(async () => {
+  worker = await startWorker();
+  admin = client(worker.base);
+  alice = client(worker.base);
+  bob = client(worker.base);
+  await admin.post("/register", {email: ADMIN_EMAIL, password: PASSWORD});
+  await alice.post("/register", {email: "alice@test.local", password: PASSWORD});
+  await bob.post("/register", {email: "bob@test.local", password: PASSWORD});
+  for (const name of ["Back squat", "Pull-up"])
+    await admin.post("/admin/movements", {name, measurement_method: "load"});
+  catalog = (await alice.get("/movement-catalog")).data.movements;
+  activityId = (await alice.get("/activities")).data.activities[0].id;
+});
+after(() => worker?.stop());
+
+const session = (date, movements) =>
+  alice.post("/sessions", {
+    program_id: "none",
+    wod_id: "other",
+    session_date: date,
+    activity_id: activityId,
+    duration_minutes: 60,
+    actual_comment: "",
+    movement_ids: [],
+    catalog_movement_ids: movements,
+  });
+
+test("progression : 12 semaines, régularité, répartition et mouvements", async () => {
+  const monday = mondayOf(today()),
+    squat = catalog.find(m => m.name === "Back squat").id,
+    pull = catalog.find(m => m.name === "Pull-up").id;
+  // cette semaine (lundi), la précédente, puis un trou, puis 4 semaines plus tôt
+  for (const [date, moves] of [
+    [monday, [squat, pull]],
+    [addDays(monday, -7), [squat]],
+    [addDays(monday, -6), []],
+    [addDays(monday, -28), [squat]],
+  ])
+    assert.equal((await session(date, moves)).status, 200);
+  const d = (await alice.get("/progress")).data;
+  assert.equal(d.weeks.length, 12);
+  assert.equal(d.weeks[11].week_start, monday);
+  assert.equal(d.weeks[11].count, 1);
+  assert.equal(d.weeks[10].count, 2);
+  assert.equal(d.total, 4);
+  assert.equal(d.active_weeks, 3);
+  assert.equal(d.streak_weeks, 2, "la semaine vide arrête la série");
+  assert.deepEqual(d.by_source, {prog: 0, box: 0, daily: 0, libre: 4});
+  assert.deepEqual(d.movements, [
+    {name: "Back squat", count: 3},
+    {name: "Pull-up", count: 1},
+  ]);
+  const other = (await bob.get("/progress")).data;
+  assert.equal(other.total, 0, "les séances d'un autre compte ne comptent pas");
+  assert.equal(other.streak_weeks, 0);
+});

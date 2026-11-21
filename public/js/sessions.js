@@ -87,6 +87,7 @@ function switchView(v) {
   if (v === "admin") showAdminPage();
   if (user) renderUserbar();
   if (v === "box") loadManagedBox();
+  if (v === "prs") loadProgress();
   if (v === "nutrition") loadNutrition();
 }
 document.querySelectorAll(".navtab[data-view]").forEach(b => (b.onclick = () => switchView(b.dataset.view)));

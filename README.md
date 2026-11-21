@@ -97,6 +97,11 @@ Une planification n'est pas une séance réalisée : elle sert de repère dans l
 - L'analyse (`POST /api/meal-analysis` : `photo` en data URL, `items` [{`name`, `quantity`}], `note`) demande le réseau et n'enregistre rien ; `GET /api/meal-analysis` indique si elle est activée et le nombre d'analyses restantes. Limite de 50 analyses par utilisateur et par 24 h. Chaque analyse est journalisée (`meal_analyses` : aliments et précision saisis, JSON renvoyé, version du prompt `repas-v1`, modèle). Format JSON imposé (structured outputs, `src/nutrition.js`).
 - Repas : `GET /api/meals?from=…&to=…` (93 jours au plus), `POST /api/meals` (avec `client_id`, rejouable hors ligne), `PUT` et `DELETE /api/meals/:id`. Les totaux du repas sont toujours recalculés par le serveur à partir des aliments. Un repas déjà analysé s'enregistre, se modifie ou se supprime hors ligne.
 
+### Progression (page PR)
+- Rubrique repliable **PROGRESSION** de la page PR, sur les 12 dernières semaines (semaine en cours comprise) : nombre de séances, moyenne par semaine, semaines actives d'affilée (la semaine en cours ne casse pas la série tant qu'elle est vide) ; histogramme des séances par semaine (un toucher ou le survol d'une colonne affiche son détail, les autres s'atténuent) ; répartition par origine (WOD de la prog, de la box, du jour, séances libres) ; mouvements les plus travaillés (une fois par séance, regroupés par nom).
+- Calculée par le serveur (`GET /api/progress`, fonctions `trainingStats` et `activeWeekStreak`, réutilisées par le bilan mensuel), gardée hors ligne, rechargée à chaque ouverture de la page PR.
+- Une seule série par graphique : couleur `--chart-mark` propre à chaque thème (contraste d'au moins 3:1 avec le fond), grille et axes discrets, valeurs écrites en clair.
+
 ### Records personnels (PR)
 
 **PR Engine** (famille Distance) : deux formats à la saisie — « temps sur une distance » (250 m, 500 m, 1 km, 2 km, 5 km, 10 km, semi, marathon ou autre ; temps saisi dans trois cases Heures / Minutes / Secondes, le plus court est le meilleur) ou « distance dans un temps » (1, 2, 5, 10, 12 min Cooper, 20, 30 min, 1 h ou autre durée en heures / minutes / secondes ; distance en m ou km, la plus longue est la meilleure). Une carte par mouvement et par format (comme les RM), avec l'allure calculée (au 500 m pour le rameur, au km sinon ; masquée quand elle répète le temps) ; historique et courbe en mn:s pour les temps. Les anciens PR de distance seule restent affichés. Serveur : colonnes `personal_records.fixed_kind` (`distance` ou `time`) et `fixed_value` (m ou s), migration V29 ; valeurs validées (10 m à 100 km, 10 s à 24 h, temps entier en secondes).
@@ -261,7 +266,7 @@ Lancer les tests d'intégration (Node.js 20+ ; démarrent le Worker en local sur
 node --test tests/*.test.mjs
 ```
 
-Ils couvrent la connexion et le cookie de session, la limitation des tentatives, l'isolation des données entre utilisateurs, la création sans doublon des séances et PR rejouées (mode hors ligne), l'administration et les réglages des rappels (`tests/api.test.mjs`), ainsi que les administrateurs multiples, les box, gestionnaires, adhésions, WOD de box, scores, classements, programmes publics suivis et préférences du compte (`tests/boxes.test.mjs`), ainsi que la génération de WOD par IA avec un faux service OpenAI local (`tests/ai.test.mjs`) et les WOD de référence (`tests/benchmarks.test.mjs`).
+Ils couvrent la connexion et le cookie de session, la limitation des tentatives, l'isolation des données entre utilisateurs, la création sans doublon des séances et PR rejouées (mode hors ligne), l'administration et les réglages des rappels (`tests/api.test.mjs`), ainsi que les administrateurs multiples, les box, gestionnaires, adhésions, WOD de box, scores, classements, programmes publics suivis et préférences du compte (`tests/boxes.test.mjs`), ainsi que la génération de WOD par IA avec un faux service OpenAI local (`tests/ai.test.mjs`) les WOD de référence (`tests/benchmarks.test.mjs`) et la progression (`tests/progress.test.mjs`).
 
 Déployer le Worker et les assets :
 

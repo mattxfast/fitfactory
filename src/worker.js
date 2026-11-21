@@ -797,6 +797,55 @@ function userProgramDates(program, userId) {
 // Programmation hebdomadaire d'un programme suivi : la semaine N de l'auteur devient la semaine N de l'utilisateur.
 const weekShift = (authorStart, followStart) => daysBetween(mondayOfDate(authorStart), mondayOfDate(followStart));
 const mondayOfDate = d => addDays(d, -((new Date(d + "T12:00:00Z").getUTCDay() + 6) % 7));
+// Statistiques d'entraînement sur une période (progression, bilan mensuel) : séances par semaine, par origine
+// (programmation, box, WOD du jour, séance libre) et mouvements les plus travaillés (une fois par séance).
+async function trainingStats(e, userId, from, to) {
+  const [rows, moves] = await Promise.all([
+    e.DB.prepare(
+      "SELECT s.session_date,s.box_wod_id,s.daily_wod_id,w.name AS wod_name FROM training_sessions s JOIN program_wods w ON w.id=s.wod_id WHERE s.user_id=? AND s.session_date BETWEEN ? AND ?"
+    )
+      .bind(userId, from, to)
+      .all(),
+    e.DB.prepare(
+      "SELECT name,COUNT(*) AS n FROM (SELECT DISTINCT s.id AS sid,LOWER(TRIM(COALESCE(mc.name,pm.name))) AS k,COALESCE(mc.name,pm.name) AS name FROM training_sessions s JOIN session_movement_checks c ON c.session_id=s.id JOIN program_movements pm ON pm.id=c.movement_id LEFT JOIN movement_catalog mc ON mc.id=pm.catalog_movement_id WHERE s.user_id=? AND s.session_date BETWEEN ? AND ? UNION SELECT DISTINCT s.id,LOWER(TRIM(mc.name)),mc.name FROM training_sessions s JOIN session_catalog_movement_checks c ON c.session_id=s.id JOIN movement_catalog mc ON mc.id=c.catalog_movement_id WHERE s.user_id=? AND s.session_date BETWEEN ? AND ?) GROUP BY k ORDER BY n DESC,name LIMIT 10"
+    )
+      .bind(userId, from, to, userId, from, to)
+      .all(),
+  ]);
+  const weeks = [];
+  for (let w = mondayOfDate(from); w <= to; w = addDays(w, 7)) weeks.push({week_start: w, count: 0});
+  const bySource = {prog: 0, box: 0, daily: 0, libre: 0};
+  for (const x of rows.results) {
+    const week = weeks.find(w => w.week_start === mondayOfDate(x.session_date));
+    if (week) week.count++;
+    bySource[x.box_wod_id ? "box" : x.daily_wod_id ? "daily" : x.wod_name === "__AUTRES__" ? "libre" : "prog"]++;
+  }
+  return {
+    total: rows.results.length,
+    days: new Set(rows.results.map(x => x.session_date)).size,
+    weeks,
+    active_weeks: weeks.filter(w => w.count).length,
+    by_source: bySource,
+    movements: moves.results.map(x => ({name: x.name, count: x.n})),
+  };
+}
+// Semaines d'affilée avec au moins une séance, jusqu'à la semaine en cours (ou la précédente si celle-ci est vide).
+async function activeWeekStreak(e, userId, now) {
+  const dates = await e.DB.prepare(
+      "SELECT DISTINCT session_date FROM training_sessions WHERE user_id=? AND session_date>=? AND session_date<=?"
+    )
+      .bind(userId, addDays(now, -730), now)
+      .all(),
+    weeks = new Set(dates.results.map(x => mondayOfDate(x.session_date)));
+  let week = mondayOfDate(now),
+    streak = 0;
+  if (!weeks.has(week)) week = addDays(week, -7);
+  while (weeks.has(week)) {
+    streak++;
+    week = addDays(week, -7);
+  }
+  return streak;
+}
 // Un seul programme à la fois : un programme suivi ne chevauche aucun programme personnel en cours ou à venir.
 async function followOverlap(e, userId, start, end) {
   return await e.DB.prepare(
@@ -2228,6 +2277,13 @@ async function api(r, e, p, ctx = null) {
     });
   }
   // Score de forme (page PR) : 7 piliers calculés à partir du profil, des PR, des séances et des classements de box.
+  // Progression (page PR) : 12 dernières semaines, semaine en cours comprise.
+  if (r.method === "GET" && p === "/api/progress") {
+    const now = localToday(),
+      from = addDays(mondayOfDate(now), -77),
+      stats = await trainingStats(e, u.id, from, now);
+    return json({from, to: now, ...stats, streak_weeks: await activeWeekStreak(e, u.id, now)});
+  }
   if (r.method === "GET" && p === "/api/fitness-score") {
     const today = localToday(),
       from = addDays(today, -55);

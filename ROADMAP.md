@@ -9,7 +9,7 @@ dire « fais l'idée 7 ».
 - Nouvelle idée : l'ajouter dans la bonne rubrique avec le **numéro suivant le plus grand existant**.
 - *En italique* : la décision de Matt quand il y en a une.
 
-Prochain numéro libre : **40**
+Prochain numéro libre : **41**
 
 ## Fiabilité et exploitation
 
@@ -45,6 +45,7 @@ Prochain numéro libre : **40**
 - [ ] **34.** Application Apple Watch : chrono de WOD au poignet (rounds, EMOM, Tabata) avec vibrations, WOD du jour affiché, séance enregistrée à la fin. Même prérequis que l'idée 33 (app native, compte Apple Developer) ; à faire avec ou après le widget. *À décider par Matt.*
 - [ ] **38.** Widget iOS « léger », sans app native : l'app gratuite Scriptable affiche un widget (écran d'accueil ou verrouillé) à partir d'un petit script JavaScript fourni par myFitFactory, qui lit une route en lecture seule (WOD du jour, WOD de la semaine, séances faites) protégée par un jeton personnel révocable, généré dans « Mon compte ». Pas de compte Apple Developer ; mise à jour du widget toutes les 15 min à quelques heures selon iOS. Alternative à l'idée 33. *À décider par Matt.*
 - [x] **39.** Bilan mensuel : récapitulatif du mois écoulé (séances, régularité, répartition, mouvements, PR, scores, score de forme), consultable dans l'app et annoncé par notification le 1er du mois ; commentaire de coach par IA en option. Bandeau dans Séances (7 premiers jours), notification le 1er, rubrique Bilans mensuels de la page PR. — fait le 21/11/2026 (`bb04b75`)
+- [x] **40.** Onglet « Mon fitness » (à la place de « PR ») : sous-onglets Forme (score de forme, progression), Records (PR, benchmarks), Bilans (bilans mensuels). — fait le 21/11/2026
 - [x] **35.** Interface simplifiée, au choix dans Mon compte → Apparence : page Séances réduite à l'historique puis aux mouvements travaillés (sans rubriques WOD de la programmation, de la box ni WOD du jour), onglet Programmes masqué ; le formulaire de séance propose toujours tous les WOD. — fait le 21/11/2026
 - [x] **36.** Programmes : champ du WOD renommé « Thématique / Structure », repris dans la consigne particulière de la génération par IA (un WOD ou tout le programme). — fait le 21/11/2026 (`f440f06`)
 - [x] **37.** Programmes : mouvements à travailler propres à chaque WOD, repris par la génération IA et cochés par défaut dans la séance. — fait le 21/11/2026 (`247cc58`)

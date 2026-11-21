@@ -4134,6 +4134,32 @@ button:disabled {
 .weekheading .weekheading-action ~ span {
   margin-left: 0;
 }
+/* Mon fitness : sous-onglets Forme / Records / Bilans en tête de page. */
+.fitness-tabs {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  padding: 4px;
+  margin-bottom: var(--page-content-gap);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--content-bg);
+}
+.fitness-tab {
+  padding: 9px 6px;
+  border: 0;
+  border-radius: 9px;
+  background: none;
+  color: var(--muted-strong);
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+}
+.fitness-tab.active {
+  background: var(--blue);
+  color: var(--on-accent);
+}
 /* Progression (page PR) : chiffres clés, histogramme des séances par semaine, barres horizontales. Une seule série
    par graphique : couleur d’accent du thème, grille et axes discrets, valeurs en texte. */
 .progress-body {

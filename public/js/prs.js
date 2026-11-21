@@ -273,6 +273,18 @@ function renderFitness() {
       : "";
   return `<section class="admin-group pr-category-group fitness-group ${collapsed ? "collapsed" : ""}" data-pr-category="${key}"><div class="admin-group-title" role="button" tabindex="0" data-toggle-pr-category="${key}" aria-expanded="${!collapsed}"><span class="admin-collapse-indicator">${collapsed ? "＋" : "−"}</span><span>SCORE DE FORME</span><span class="fitness-total">${total}<small>/100</small></span></div><div class="admin-group-body"><div class="pr-category-body"><div class="fitness-panel card"><div class="fitness-summary">${fitnessRadar(d.pillars)}<div class="fitness-headline"><strong>${total}<small>/100</small></strong><span class="fitness-level">${esc(d.level || "Score à construire")}</span><p>${d.complete ? "Calculé sur tes 8 piliers." : "Calculé sur les piliers renseignés ; les autres sont à compléter."}</p></div></div>${missing}<details class="fitness-details" ${window.cfFitnessDetailOpen ? "open" : ""}><summary>Détail des 8 piliers</summary><div class="fitness-pillars">${pillars}</div></details><p class="fitness-note">Score personnel, visible de toi seul. <button type="button" class="fitness-how" data-fitness-how>Comment est-il calculé ?</button></p></div></div></div></section>`;
 }
+const FITNESS_TABS = [
+  ["forme", "Forme"],
+  ["records", "Records"],
+  ["bilans", "Bilans"],
+];
+function fitnessTab() {
+  if (!window.cfFitnessTab)
+    try {
+      window.cfFitnessTab = localStorage.getItem("fitfactory-fitness-tab");
+    } catch {}
+  return FITNESS_TABS.some(([k]) => k === window.cfFitnessTab) ? window.cfFitnessTab : "forme";
+}
 function renderPrs() {
   const groups = new Map();
   for (const r of prRecords) {
@@ -313,25 +325,44 @@ function renderPrs() {
     method =>
       movementCatalog.some(m => m.measurement_method === method) || items.some(x => x.measurement_method === method)
   );
-  $("#prcards").innerHTML = families.length
-    ? renderFitness() +
-      renderProgressSection() +
-      renderReportSection() +
-      families
-        .map(method =>
-          renderPrCategory(
-            method,
-            items.filter(x => x.measurement_method === method)
-          )
-        )
-        .join("") +
-      renderBenchmarkSection()
-    : renderProgressSection() +
-      renderReportSection() +
-      '<div class="card empty">Aucun mouvement dans le catalogue : l’administrateur doit d’abord en ajouter.</div>' +
-      renderBenchmarkSection();
+  // Onglet « Mon fitness » : trois sous-onglets (Forme, Records, Bilans), le dernier ouvert est mémorisé.
+  const tab = fitnessTab(),
+    content =
+      tab === "forme"
+        ? renderFitness() + renderProgressSection()
+        : tab === "bilans"
+          ? renderReportSection()
+          : (families.length
+              ? families
+                  .map(method =>
+                    renderPrCategory(
+                      method,
+                      items.filter(x => x.measurement_method === method)
+                    )
+                  )
+                  .join("")
+              : '<div class="card empty">Aucun mouvement dans le catalogue : l’administrateur doit d’abord en ajouter.</div>') +
+            renderBenchmarkSection();
+  $("#prcards").innerHTML =
+    '<div class="fitness-tabs" role="tablist" aria-label="Mon fitness">' +
+    FITNESS_TABS.map(
+      ([key, label]) =>
+        `<button type="button" role="tab" class="fitness-tab ${key === tab ? "active" : ""}" aria-selected="${key === tab}" data-fitness-tab="${key}">${label}</button>`
+    ).join("") +
+    "</div>" +
+    content;
   const body = $("#prcards");
   body.hidden = false;
+  body.querySelectorAll("[data-fitness-tab]").forEach(
+    b =>
+      (b.onclick = () => {
+        try {
+          localStorage.setItem("fitfactory-fitness-tab", b.dataset.fitnessTab);
+        } catch {}
+        window.cfFitnessTab = b.dataset.fitnessTab;
+        renderPrs();
+      })
+  );
   body.querySelectorAll("[data-toggle-pr-category]").forEach(button => {
     const toggle = () => {
       const key = button.dataset.togglePrCategory,

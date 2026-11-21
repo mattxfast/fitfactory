@@ -49,6 +49,12 @@ Une planification n'est pas une séance réalisée : elle sert de repère dans l
 - Limite : 10 WOD du jour par utilisateur et par 24 h, dans la limite générale de 100 générations. Génération et suppression demandent le réseau ; le WOD déjà généré reste lisible et utilisable hors ligne.
 - Routes : `POST /api/daily-wods` (`wod_date`, `duration_minutes`, `place`, `energy`, `instructions`, `replace_id` facultatif) et `DELETE /api/daily-wods/:id` (refusé si une séance y est rattachée) ; `GET /api/week-data` renvoie `dailyWods` ; `POST`/`PUT /api/sessions` acceptent `daily_wod_id`. Migration V27 : table `daily_wods`, colonne `training_sessions.daily_wod_id`.
 
+### WOD de référence (benchmarks)
+- Une vingtaine de WOD célèbres et toujours identiques (Girls : Fran, Grace, Helen, Cindy, Karen…, Heroes : Murph, DT, JT…), décrits dans `src/benchmarks.js` avec leur version adaptée, leur chrono et leur matériel.
+- Rubrique « WOD du jour » : bouton 🎲 du titre (ou « WOD de référence » quand la rubrique est vide). La fenêtre propose un WOD tiré au hasard selon le lieu (box, extérieur, peu de matériel), un autre tirage ou un choix dans la liste, puis l'ajoute comme WOD du jour (aujourd'hui ou demain), sans IA ni limite. Le tirage marche hors ligne : la liste (`GET /api/benchmarks`) est gardée sur le téléphone, le WOD choisi s'affiche tout de suite et part au serveur au retour du réseau (`POST /api/daily-wods/benchmark`, avec `client_id`).
+- Séance sur un WOD de référence : score facultatif dans le formulaire (temps en min : s, ou tours + répétitions pour un AMRAP) et case « Scaled » ; affiché dans le détail de la séance.
+- Page PR, rubrique **BENCHMARKS** : une carte par benchmark réalisé (meilleur score, en Rx s'il y en a un, sinon en Scaled), historique avec courbe et liste (Rx / Scaled, séance ou saisie) ; le ＋ du bandeau ajoute un résultat à la main (fait à la box, par exemple), supprimable depuis l'historique. Routes `GET`/`POST /api/benchmark-results`, `DELETE /api/benchmark-results/:id` ; les scores des séances sont lus directement dans les séances.
+
 ### Génération de WOD par IA
 - Dans ses propres programmes uniquement (ni programme suivi, ni espace gestionnaire), quatre boutons « étincelles » :
   - **Programmes, titre de la rubrique WOD** : tous les WOD sur toute la période. On choisit le nombre de WOD par semaine (1 à 7) ; les WOD manquants sont créés (« WOD 1 », « WOD 2 »…, marqués « suivi »), puis l'IA écrit le contenu de chaque WOD pour chaque semaine, l'un après l'autre, avec l'avancement affiché ;
@@ -207,6 +213,7 @@ Les évolutions applicatives V2 et V3 sont versionnées dans le Worker :
 - V21 ajoute l'index `reminder_settings_hour` (heure du rappel, dernier envoi) pour les passages de la tâche des rappels.
 - V22 ajoute les index `programs_user` (programmes d'un utilisateur) et `box_members_role_status` (demandes en attente), pour une box de plusieurs centaines de membres.
 - V33 ajoute la table `program_wod_movements` (mouvements à travailler propres à un WOD de programme).
+- V34 ajoute aux WOD du jour `benchmark_id` et `score_type`, aux séances `score_scaled` (Rx / Scaled), et la table `benchmark_results` (résultats de benchmarks saisis dans la page PR).
 
 Le Worker consulte `app_migrations` et n'exécute que les versions qui ne sont pas marquées comme terminées. Les migrations applicatives sont additives : elles ne réinitialisent pas les comptes ni les données existantes. Toute nouvelle évolution de schéma doit recevoir une nouvelle version de migration ; ne pas modifier rétroactivement une migration déjà appliquée.
 
@@ -254,7 +261,7 @@ Lancer les tests d'intégration (Node.js 20+ ; démarrent le Worker en local sur
 node --test tests/*.test.mjs
 ```
 
-Ils couvrent la connexion et le cookie de session, la limitation des tentatives, l'isolation des données entre utilisateurs, la création sans doublon des séances et PR rejouées (mode hors ligne), l'administration et les réglages des rappels (`tests/api.test.mjs`), ainsi que les administrateurs multiples, les box, gestionnaires, adhésions, WOD de box, scores, classements, programmes publics suivis et préférences du compte (`tests/boxes.test.mjs`), ainsi que la génération de WOD par IA avec un faux service OpenAI local (`tests/ai.test.mjs`).
+Ils couvrent la connexion et le cookie de session, la limitation des tentatives, l'isolation des données entre utilisateurs, la création sans doublon des séances et PR rejouées (mode hors ligne), l'administration et les réglages des rappels (`tests/api.test.mjs`), ainsi que les administrateurs multiples, les box, gestionnaires, adhésions, WOD de box, scores, classements, programmes publics suivis et préférences du compte (`tests/boxes.test.mjs`), ainsi que la génération de WOD par IA avec un faux service OpenAI local (`tests/ai.test.mjs`) et les WOD de référence (`tests/benchmarks.test.mjs`).
 
 Déployer le Worker et les assets :
 

@@ -322,8 +322,10 @@ function renderPrs() {
             items.filter(x => x.measurement_method === method)
           )
         )
-        .join("")
-    : '<div class="card empty">Aucun mouvement dans le catalogue : l’administrateur doit d’abord en ajouter.</div>';
+        .join("") +
+      renderBenchmarkSection()
+    : '<div class="card empty">Aucun mouvement dans le catalogue : l’administrateur doit d’abord en ajouter.</div>' +
+      renderBenchmarkSection();
   const body = $("#prcards");
   body.hidden = false;
   body.querySelectorAll("[data-toggle-pr-category]").forEach(button => {
@@ -346,6 +348,7 @@ function renderPrs() {
     };
   });
   body.querySelectorAll("[data-add-pr]").forEach(b => (b.onclick = () => openPrForm(null, b.dataset.addPr)));
+  bindBenchmarkSection(body);
   body.querySelectorAll("[data-fitness-profile]").forEach(b => (b.onclick = () => switchView("account")));
   // Détail des piliers replié par défaut ; l’état reste le même quand la page se redessine.
   body.querySelectorAll(".fitness-details").forEach(d => (d.ontoggle = () => (window.cfFitnessDetailOpen = d.open)));

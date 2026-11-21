@@ -1285,6 +1285,52 @@
           <div id="prformerror" class="error"></div>
         </form>
       </dialog>
+      <dialog id="benchdialog" class="modal">
+        <form id="benchform" method="dialog">
+          <div class="sectionhead">
+            <h2>WOD de référence</h2>
+            <button type="button" class="iconbtn" data-close-dialog="benchdialog">×</button>
+          </div>
+          <p class="hint">
+            Un WOD célèbre et toujours identique (Fran, Cindy, Murph…), pour te mesurer dans le temps. Ton score est
+            suivi dans la page PR, rubrique Benchmarks.
+          </p>
+          <div class="two">
+            <label>Pour<select name="wod_date"></select></label>
+            <label
+              >Où ?<select name="place">
+                <option value="box">Box (tout le matériel)</option>
+                <option value="exterieur">Extérieur</option>
+                <option value="peu">Peu de matériel</option>
+              </select></label
+            >
+          </div>
+          <label>WOD<select name="benchmark_id"></select></label>
+          <div id="benchpreview" class="bench-preview"></div>
+          <div class="daily-detail-actions">
+            <button type="button" class="smallbtn" id="benchreroll">Un autre au hasard</button>
+          </div>
+          <button class="primary" id="benchsubmit">Choisir ce WOD</button>
+          <div class="error" id="bencherror"></div>
+        </form>
+      </dialog>
+      <dialog id="benchresultdialog" class="modal">
+        <form id="benchresultform" method="dialog">
+          <div class="sectionhead">
+            <h2>Résultat de benchmark</h2>
+            <button type="button" class="iconbtn" data-close-dialog="benchresultdialog">×</button>
+          </div>
+          <div class="two">
+            <label>WOD<select name="benchmark_id"></select></label>
+            <label>Date<input name="result_date" type="date" required /></label>
+          </div>
+          <div class="score-inputs" id="benchresultscore"></div>
+          <label class="checkbox-label"><input type="checkbox" name="scaled" /> Fait en Scaled (version adaptée)</label>
+          <label>Commentaire (facultatif)<input name="comment" maxlength="300" /></label>
+          <button class="primary">Enregistrer le résultat</button>
+          <div class="error" id="benchresulterror"></div>
+        </form>
+      </dialog>
       <dialog id="prhistorydialog" class="modal">
         <div class="sectionhead pr-history-page-title">
           <h2 id="prhistorytitle">Historique du PR</h2>
@@ -1309,6 +1355,7 @@
     <script src="/js/nutrition.js"></script>
     <script src="/js/timer.js"></script>
     <script src="/js/daily-wod.js"></script>
+    <script src="/js/benchmarks.js"></script>
     <script src="/js/account.js"></script>
     <script src="/js/ui.js"></script>
     <script src="/js/boot.js"></script>

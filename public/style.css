@@ -4125,8 +4125,15 @@ button:disabled {
 .weekheading .weekheading-action {
   margin: -4px 0 -4px auto; /* bouton de la taille des boutons de ligne sans agrandir le titre */
 }
-.weekheading .weekheading-action + span {
+/* Deux boutons dans le titre (🎲 WOD de référence, ✨ IA) : seul le premier pousse vers la droite. */
+.weekheading .weekheading-action + .weekheading-action,
+.weekheading .weekheading-action ~ span {
   margin-left: 0;
+}
+/* WOD de référence : aperçu du WOD tiré au sort. */
+.bench-preview {
+  max-height: 40vh;
+  overflow-y: auto;
 }
 /* Ligne d’un WOD (programmation, WOD du jour) : toute la partie texte ouvre le détail en fenêtre. */
 .weekwod-text[role="button"] {
@@ -4163,11 +4170,19 @@ button:disabled {
   justify-content: space-between;
   gap: 12px;
 }
-.daily-empty .primary {
+.daily-empty .primary,
+.daily-empty-actions .smallbtn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   flex: 0 0 auto;
+}
+/* Rubrique vide : « Générer » (IA) et « WOD de référence » l’un sous l’autre. */
+.daily-empty-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
 }
 .daily-choice {
   margin: 0;

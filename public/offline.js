@@ -174,10 +174,24 @@ const FFOffline = (() => {
             wod_id: body.wod_id,
             ...hooks.describeSession({wod_id: body.wod_id}),
           });
+      } else if (op.method === "POST" && op.path === "/daily-wods/benchmark" && inRange(range, body.wod_date)) {
+        // WOD de référence tiré hors ligne : affiché tout de suite dans la rubrique « WOD du jour ».
+        data.dailyWods = [
+          ...(data.dailyWods || []).filter(w => w.id !== body.client_id),
+          {...hooks.describeBenchmarkWod(body), id: body.client_id, wod_date: body.wod_date, pending: 1},
+        ];
       } else if (op.method === "PUT" && op.path === "/weekly-flags" && inRange(range, body.week_start)) {
         data.flags = (data.flags || []).filter(x => x.week_start !== body.week_start);
         data.flags.push({week_start: body.week_start, competition: body.competition ? 1 : 0});
       }
+    } else if (path === "/benchmark-results" && op.path === "/benchmark-results" && op.method === "POST") {
+      // Résultat de benchmark saisi hors ligne (page PR).
+      data.results = [
+        ...(data.results || []).filter(x => x.id !== body.client_id),
+        {...body, id: body.client_id, scaled: body.scaled ? 1 : 0, source: "manual", created_at: op.at, pending: 1},
+      ];
+    } else if (path === "/benchmark-results" && (m = op.path.match(/^\/benchmark-results\/([\w-]+)$/))) {
+      data.results = (data.results || []).filter(x => x.id !== m[1]);
     } else if (path === "/preferences" && op.path === "/preferences" && op.method === "PUT") {
       if (body.theme !== undefined) data.theme = body.theme;
       if (body.interface !== undefined) data.interface = body.interface;

@@ -3,6 +3,18 @@
 
 FFOffline.init({
   send: sendApi,
+  // WOD de référence tiré hors ligne : titre, texte et chrono repris de la liste gardée sur le téléphone.
+  describeBenchmarkWod: b => {
+    const bench = benchmarkFor(b.benchmark_id);
+    return {
+      title: bench?.name || "WOD de référence",
+      content: bench?.content || "",
+      chrono: bench?.chrono || null,
+      movement_ids: [],
+      benchmark_id: b.benchmark_id,
+      score_type: bench?.score || null,
+    };
+  },
   describeSession: b => {
     // WOD de box : nom, contenu, box, type de score et catégorie, pour l’affichage hors ligne.
     const boxWod = b.box_wod_id ? boxWodsById.get(b.box_wod_id) : null,

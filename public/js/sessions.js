@@ -44,6 +44,7 @@ async function load() {
     renderPrograms();
     renderWeek();
     if (!$("#view-nutrition").hidden) loadNutrition();
+    loadBenchmarks();
     if (isAdmin) loadAdmin();
   } catch (e) {
     toast(e.message);
@@ -179,7 +180,11 @@ function openSessionDetail(id) {
       (hasScore
         ? part(
             "Score :",
-            formatScore(s.score_type, s.score_value) + (s.score_category_name ? " · " + s.score_category_name : "")
+            // WOD de référence : temps ou tours + répétitions, Rx ou Scaled.
+            (s.benchmark_id && benchmarkFor(s.benchmark_id)
+              ? benchmarkScoreLabel(benchmarkFor(s.benchmark_id), s.score_value) +
+                (Number(s.score_scaled) ? " · Scaled" : " · Rx")
+              : formatScore(s.score_type, s.score_value)) + (s.score_category_name ? " · " + s.score_category_name : "")
           )
         : "") +
       (movements.length ? part("Mouvements travaillés :", [...new Set(movements)].join(", ")) : "") +

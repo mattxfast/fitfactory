@@ -24,6 +24,7 @@ import {
   mealInput,
 } from "./nutrition.js";
 import {athleteProfileInput, computeFitness} from "./fitness.js";
+import {BENCHMARKS, benchmarkById, benchmarkOut, benchmarkMovementIds, benchmarkScore} from "./benchmarks.js";
 const SESSION_DAYS = 30,
   enc = new TextEncoder();
 const json = (d, s = 200, h = {}) =>
@@ -516,6 +517,29 @@ async function ensureV2Schema(env) {
         "CREATE TABLE IF NOT EXISTS program_wod_movements (wod_id TEXT NOT NULL REFERENCES program_wods(id) ON DELETE CASCADE, catalog_movement_id TEXT NOT NULL REFERENCES movement_catalog(id) ON DELETE CASCADE, PRIMARY KEY(wod_id,catalog_movement_id))"
       ).run();
     });
+    await runMigration("v34-benchmarks", async () => {
+      // WOD de référence (benchmarks) : WOD du jour tiré de la liste (sans IA), score de la séance (Rx ou Scaled) et
+      // résultats saisis à la main dans la page PR.
+      const dw = await env.DB.prepare("PRAGMA table_info(daily_wods)").all();
+      for (const [name, definition] of [
+        ["benchmark_id", "TEXT"],
+        ["score_type", "TEXT"],
+      ])
+        if (!dw.results.some(column => column.name === name))
+          await env.DB.prepare("ALTER TABLE daily_wods ADD COLUMN " + name + " " + definition).run();
+      const ts = await env.DB.prepare("PRAGMA table_info(training_sessions)").all();
+      if (!ts.results.some(column => column.name === "score_scaled"))
+        await env.DB.prepare("ALTER TABLE training_sessions ADD COLUMN score_scaled INTEGER").run();
+      await env.DB.batch([
+        env.DB.prepare(
+          "CREATE TABLE IF NOT EXISTS benchmark_results (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, benchmark_id TEXT NOT NULL, result_date TEXT NOT NULL, value REAL NOT NULL, scaled INTEGER NOT NULL DEFAULT 0, comment TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
+        ),
+        env.DB.prepare(
+          "CREATE INDEX IF NOT EXISTS benchmark_results_user ON benchmark_results(user_id,benchmark_id,result_date)"
+        ),
+        env.DB.prepare("CREATE INDEX IF NOT EXISTS daily_wods_benchmark ON daily_wods(user_id,benchmark_id)"),
+      ]);
+    });
   })().catch(err => {
     schemaReady = null;
     throw err;
@@ -860,7 +884,7 @@ const boxRole = (e, userId, boxId, role) =>
     .first();
 // Séances : WOD du programme, « Autres » ou WOD d'une box (avec score et catégorie).
 const SESSION_SELECT =
-  "SELECT s.*,a.name AS activity_name,COALESCE(bw.name,dw.title,CASE WHEN w.name='__AUTRES__' THEN 'Autres' ELSE w.name END) AS wod_name,COALESCE(bw.content,dw.content,w.planned_comment) AS planned_comment,p.name AS program_name,bw.box_id,bw.wod_date AS box_wod_date,bw.score_type,bx.name AS box_name,bc.name AS score_category_name,dw.wod_date AS daily_wod_date,su.first_name AS shared_from_first_name,su.last_name AS shared_from_last_name FROM training_sessions s JOIN program_wods w ON w.id=s.wod_id JOIN programs p ON p.id=s.program_id LEFT JOIN activities a ON a.id=s.activity_id LEFT JOIN box_wods bw ON bw.id=s.box_wod_id LEFT JOIN boxes bx ON bx.id=bw.box_id LEFT JOIN box_categories bc ON bc.id=s.score_category_id LEFT JOIN daily_wods dw ON dw.id=s.daily_wod_id AND dw.user_id=s.user_id LEFT JOIN users su ON su.id=s.shared_from_user_id WHERE s.user_id=?";
+  "SELECT s.*,a.name AS activity_name,COALESCE(bw.name,dw.title,CASE WHEN w.name='__AUTRES__' THEN 'Autres' ELSE w.name END) AS wod_name,COALESCE(bw.content,dw.content,w.planned_comment) AS planned_comment,p.name AS program_name,bw.box_id,bw.wod_date AS box_wod_date,COALESCE(bw.score_type,dw.score_type) AS score_type,dw.benchmark_id,bx.name AS box_name,bc.name AS score_category_name,dw.wod_date AS daily_wod_date,su.first_name AS shared_from_first_name,su.last_name AS shared_from_last_name FROM training_sessions s JOIN program_wods w ON w.id=s.wod_id JOIN programs p ON p.id=s.program_id LEFT JOIN activities a ON a.id=s.activity_id LEFT JOIN box_wods bw ON bw.id=s.box_wod_id LEFT JOIN boxes bx ON bx.id=bw.box_id LEFT JOIN box_categories bc ON bc.id=s.score_category_id LEFT JOIN daily_wods dw ON dw.id=s.daily_wod_id AND dw.user_id=s.user_id LEFT JOIN users su ON su.id=s.shared_from_user_id WHERE s.user_id=?";
 // Partenaires tagués sur une séance (10 au plus, sans l'auteur) ; null si la requête n'en parle pas (inchangés).
 function sessionTagIds(b, userId) {
   if (!Array.isArray(b.tagged_user_ids)) return null;
@@ -908,13 +932,20 @@ async function sessionBoxWod(e, userId, b, sessionId = null) {
   if (!category) return {error: "Choisis une catégorie (RX, Scaled…).", status: 400};
   return {wod, value: v, category: category.id};
 }
-// Séance sur un WOD du jour : il doit appartenir à l'utilisateur (séance « hors programme », WOD « Autres »).
+// Séance sur un WOD du jour : il doit appartenir à l'utilisateur (séance « hors programme », WOD « Autres »). WOD de
+// référence (benchmark) : score facultatif (temps ou répétitions) et Rx / Scaled.
 async function sessionDailyWod(e, userId, b) {
-  if (!b.daily_wod_id || b.box_wod_id) return {id: null};
-  const row = await e.DB.prepare("SELECT id,wod_date FROM daily_wods WHERE id=? AND user_id=?")
+  if (!b.daily_wod_id || b.box_wod_id) return {id: null, value: null, scaled: null};
+  const row = await e.DB.prepare("SELECT id,wod_date,benchmark_id FROM daily_wods WHERE id=? AND user_id=?")
     .bind(String(b.daily_wod_id), userId)
     .first();
-  return row ? {id: row.id} : {error: "WOD du jour introuvable.", status: 404};
+  if (!row) return {error: "WOD du jour introuvable.", status: 404};
+  const bench = row.benchmark_id ? benchmarkById(row.benchmark_id) : null,
+    raw = b.score_value;
+  if (!bench || raw === null || raw === undefined || raw === "") return {id: row.id, value: null, scaled: null};
+  const score = benchmarkScore(bench, raw);
+  if (score.error) return {error: score.error, status: 400};
+  return {id: row.id, value: score.value, scaled: b.score_scaled ? 1 : 0};
 }
 const dailyWodOut = x => ({
   id: x.id,
@@ -923,6 +954,8 @@ const dailyWodOut = x => ({
   content: x.content,
   chrono: x.chrono ? JSON.parse(x.chrono) : null,
   movement_ids: JSON.parse(x.movement_ids || "[]"),
+  benchmark_id: x.benchmark_id || null,
+  score_type: x.score_type || null,
 });
 // WOD de box : nom facultatif (« WOD du JJ/MM/AAAA » par défaut), date, contenu et type de score.
 const SCORE_TYPES = ["time", "reps", "load", "none"];
@@ -2884,6 +2917,98 @@ async function api(r, e, p, ctx = null) {
     ]);
     return json({ok: true, wod: dailyWodOut(row)});
   }
+  // WOD de référence (benchmarks) : liste (gardée sur le téléphone pour le tirage hors ligne), WOD du jour tiré de
+  // la liste (sans IA), résultats suivis dans la page PR.
+  if (p === "/api/benchmarks" && r.method === "GET") return json({benchmarks: BENCHMARKS.map(benchmarkOut)});
+  if (p === "/api/daily-wods/benchmark" && r.method === "POST") {
+    const b = await r.json(),
+      cid = clientId(b.client_id),
+      bench = benchmarkById(String(b.benchmark_id || "")),
+      date = String(b.wod_date || ""),
+      now = localToday();
+    if (!bench) return json({error: "WOD de référence inconnu."}, 400);
+    // Aujourd'hui ou demain ; la veille reste acceptée pour un tirage fait hors ligne et envoyé plus tard.
+    if (!validDate(date) || date < addDays(now, -1) || date > addDays(now, 1))
+      return json({error: "Le WOD du jour se choisit pour aujourd'hui ou demain."}, 400);
+    const existing =
+      cid && (await e.DB.prepare("SELECT * FROM daily_wods WHERE id=? AND user_id=?").bind(cid, u.id).first());
+    if (existing) return json({ok: true, wod: dailyWodOut(existing)});
+    if (cid && (await e.DB.prepare("SELECT 1 FROM daily_wods WHERE id=?").bind(cid).first()))
+      return json({error: "Identifiant déjà utilisé."}, 409);
+    const catalog = await e.DB.prepare("SELECT id,name FROM movement_catalog").all(),
+      out = benchmarkOut(bench),
+      row = {
+        id: cid || uid(),
+        wod_date: date,
+        title: bench.name,
+        content: out.content,
+        chrono: JSON.stringify(out.chrono),
+        movement_ids: JSON.stringify(benchmarkMovementIds(bench, catalog.results)),
+        benchmark_id: bench.id,
+        score_type: bench.score,
+      };
+    await e.DB.prepare(
+      "INSERT INTO daily_wods(id,user_id,wod_date,title,content,chrono,movement_ids,options,benchmark_id,score_type) VALUES(?,?,?,?,?,?,?,'{}',?,?)"
+    )
+      .bind(
+        row.id,
+        u.id,
+        row.wod_date,
+        row.title,
+        row.content,
+        row.chrono,
+        row.movement_ids,
+        row.benchmark_id,
+        row.score_type
+      )
+      .run();
+    return json({ok: true, wod: dailyWodOut(row)});
+  }
+  if (p === "/api/benchmark-results" && r.method === "GET") {
+    // Résultats saisis à la main et scores des séances faites sur un WOD de référence.
+    const [manual, sessions] = await Promise.all([
+      e.DB.prepare(
+        "SELECT id,benchmark_id,result_date,value,scaled,comment,created_at FROM benchmark_results WHERE user_id=? ORDER BY result_date,created_at"
+      )
+        .bind(u.id)
+        .all(),
+      e.DB.prepare(
+        "SELECT s.id,dw.benchmark_id,s.session_date AS result_date,s.score_value AS value,COALESCE(s.score_scaled,0) AS scaled,s.actual_comment AS comment,s.created_at FROM training_sessions s JOIN daily_wods dw ON dw.id=s.daily_wod_id AND dw.user_id=s.user_id WHERE s.user_id=? AND dw.benchmark_id IS NOT NULL AND s.score_value IS NOT NULL ORDER BY s.session_date,s.created_at"
+      )
+        .bind(u.id)
+        .all(),
+    ]);
+    return json({
+      results: [
+        ...manual.results.map(x => ({...x, source: "manual"})),
+        ...sessions.results.map(x => ({...x, source: "session"})),
+      ],
+    });
+  }
+  if (p === "/api/benchmark-results" && r.method === "POST") {
+    const b = await r.json(),
+      cid = clientId(b.client_id),
+      bench = benchmarkById(String(b.benchmark_id || "")),
+      date = String(b.result_date || "");
+    if (cid && (await e.DB.prepare("SELECT 1 FROM benchmark_results WHERE id=? AND user_id=?").bind(cid, u.id).first()))
+      return json({ok: true, id: cid});
+    if (!bench) return json({error: "WOD de référence inconnu."}, 400);
+    if (!validDate(date) || date > localToday()) return json({error: "Date invalide."}, 400);
+    const score = benchmarkScore(bench, b.value);
+    if (score.error) return json({error: score.error}, 400);
+    const id = cid || uid();
+    await e.DB.prepare(
+      "INSERT INTO benchmark_results(id,user_id,benchmark_id,result_date,value,scaled,comment) VALUES(?,?,?,?,?,?,?)"
+    )
+      .bind(id, u.id, bench.id, date, score.value, b.scaled ? 1 : 0, String(b.comment || "").slice(0, 300))
+      .run();
+    return json({ok: true, id});
+  }
+  m = p.match(/^\/api\/benchmark-results\/([\w-]+)$/);
+  if (m && r.method === "DELETE") {
+    await e.DB.prepare("DELETE FROM benchmark_results WHERE id=? AND user_id=?").bind(m[1], u.id).run();
+    return json({ok: true});
+  }
   m = p.match(/^\/api\/daily-wods\/([\w-]+)$/);
   if (m && r.method === "DELETE") {
     if (
@@ -3049,7 +3174,7 @@ async function api(r, e, p, ctx = null) {
         .all(),
       daysBetween(from, to) <= 92 ? memberBoxWods(e, u.id, from, to) : [],
       e.DB.prepare(
-        "SELECT id,wod_date,title,content,chrono,movement_ids FROM daily_wods WHERE user_id=? AND wod_date>=? AND wod_date<=? ORDER BY wod_date,created_at LIMIT 60"
+        "SELECT id,wod_date,title,content,chrono,movement_ids,benchmark_id,score_type FROM daily_wods WHERE user_id=? AND wod_date>=? AND wod_date<=? ORDER BY wod_date,created_at LIMIT 60"
       )
         .bind(u.id, from, to)
         .all(),
@@ -3176,7 +3301,7 @@ async function api(r, e, p, ctx = null) {
       );
     await e.DB.batch([
       e.DB.prepare(
-        "INSERT INTO training_sessions(id,program_id,wod_id,user_id,session_date,actual_comment,activity_id,duration_minutes,started_at,logged_at,box_wod_id,score_value,score_category_id,daily_wod_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+        "INSERT INTO training_sessions(id,program_id,wod_id,user_id,session_date,actual_comment,activity_id,duration_minutes,started_at,logged_at,box_wod_id,score_value,score_category_id,daily_wod_id,score_scaled) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
       ).bind(
         id,
         pid,
@@ -3191,9 +3316,10 @@ async function api(r, e, p, ctx = null) {
           : new Date(Date.now() - duration * 60000).toISOString(),
         new Date().toISOString(),
         box.wod?.id || null,
-        box.value ?? null,
+        box.value ?? daily.value ?? null,
         box.category ?? null,
-        daily.id
+        daily.id,
+        daily.scaled
       ),
       ...checks,
       ...sessionTagStatements(e, u.id, id, sessionTagIds(b, u.id) || []),
@@ -3275,7 +3401,7 @@ async function api(r, e, p, ctx = null) {
     const tagIds = sessionTagIds(b, u.id);
     await e.DB.batch([
       e.DB.prepare(
-        "UPDATE training_sessions SET program_id=?,wod_id=?,session_date=?,actual_comment=?,activity_id=?,duration_minutes=?,started_at=?,logged_at=?,box_wod_id=?,score_value=?,score_category_id=?,daily_wod_id=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND user_id=?"
+        "UPDATE training_sessions SET program_id=?,wod_id=?,session_date=?,actual_comment=?,activity_id=?,duration_minutes=?,started_at=?,logged_at=?,box_wod_id=?,score_value=?,score_category_id=?,daily_wod_id=?,score_scaled=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND user_id=?"
       ).bind(
         b.program_id,
         wid,
@@ -3288,9 +3414,10 @@ async function api(r, e, p, ctx = null) {
           : new Date(Date.now() - duration * 60000).toISOString(),
         new Date().toISOString(),
         box.wod?.id || null,
-        box.value ?? null,
+        box.value ?? daily.value ?? null,
         box.category ?? null,
         daily.id,
+        daily.scaled,
         m[1],
         u.id
       ),

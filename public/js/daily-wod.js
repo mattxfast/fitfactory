@@ -44,10 +44,10 @@ function weekDailySection(from, folded) {
       return `<article class="weekwod card ${n ? "done" : ""}"><div class="weekcount"><button type="button" class="smallbtn" data-daily-log="${w.id}" ${future ? "disabled" : ""} aria-label="${future ? "Prévu pour demain" : "Enregistrer la séance"}" title="${future ? "Prévu pour demain" : "Enregistrer la séance"}"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg></button>${n ? "" : `<button type="button" class="smallbtn delete" data-daily-del="${w.id}" aria-label="Supprimer ce WOD" title="Supprimer ce WOD"><svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12"/><path d="M18 6 6 18"/></svg></button>`}</div><div class="weekwod-text" role="button" tabindex="0" data-daily-open="${w.id}" aria-label="Voir le détail du WOD du ${fmt(w.wod_date)}"><b>WOD du ${fmt(w.wod_date)}</b><p>${esc(w.title)}</p></div></article>`;
     })
     .join("");
-  return `<section class="session-fold ${folded.has("daily") ? "collapsed" : ""}" data-session-fold="daily"><div class="weekheading"><button class="smallbtn section-collapse" aria-label="Replier le WOD du jour" aria-expanded="${!folded.has("daily")}">${folded.has("daily") ? "＋" : "−"}</button><h2>WOD du jour</h2>${canGenerate ? `<button type="button" class="smallbtn weekheading-action" id="dailynew" aria-label="Générer mon WOD du jour" title="Générer mon WOD du jour">${AI_ICON}</button>` : ""}<span>${done}/${list.length}</span></div><div class="session-fold-body"><div class="weekwodlist">${
+  return `<section class="session-fold ${folded.has("daily") ? "collapsed" : ""}" data-session-fold="daily"><div class="weekheading"><button class="smallbtn section-collapse" aria-label="Replier le WOD du jour" aria-expanded="${!folded.has("daily")}">${folded.has("daily") ? "＋" : "−"}</button><h2>WOD du jour</h2>${canGenerate ? `<button type="button" class="smallbtn weekheading-action" data-bench-new aria-label="Tirer un WOD de référence (Fran, Cindy…)" title="WOD de référence au hasard">${DICE_ICON}</button><button type="button" class="smallbtn weekheading-action" id="dailynew" aria-label="Générer mon WOD du jour" title="Générer mon WOD du jour">${AI_ICON}</button>` : ""}<span>${done}/${list.length}</span></div><div class="session-fold-body"><div class="weekwodlist">${
     cards ||
     (canGenerate
-      ? `<article class="weekwod card section-empty daily-empty"><span>Besoin d’un entraînement ? L’IA te prépare ton WOD du jour.</span><button type="button" class="primary" data-daily-new>${AI_ICON}<span>Générer</span></button></article>`
+      ? `<article class="weekwod card section-empty daily-empty"><span>Besoin d’un entraînement ? L’IA te prépare ton WOD du jour.</span><span class="daily-empty-actions"><button type="button" class="primary" data-daily-new>${AI_ICON}<span>Générer</span></button><button type="button" class="smallbtn" data-bench-new>${DICE_ICON}<span>WOD de référence</span></button></span></article>`
       : sectionEmpty("Pas de WOD du jour cette semaine"))
   }</div></div></section>`;
 }
@@ -83,6 +83,7 @@ function bindDailySection(root) {
     .querySelectorAll("[data-daily-open]")
     .forEach(b => (b.onclick = e => (blurAfterTap(b, e), openDailyDetail(b.dataset.dailyOpen))));
   root.querySelectorAll("#dailynew, [data-daily-new]").forEach(b => (b.onclick = () => openDailyDialog()));
+  root.querySelectorAll("[data-bench-new]").forEach(b => (b.onclick = () => openBenchmarkDraw()));
   root
     .querySelectorAll("[data-daily-log]")
     .forEach(b => (b.onclick = () => openSession(null, "daily:" + b.dataset.dailyLog)));

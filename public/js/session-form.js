@@ -179,15 +179,35 @@ $("#sessionform").elements.session_date.onchange = e => {
   } else applyPlannedSessionNote();
 };
 // Score d’un WOD de box : catégorie de la box et valeur selon le type (temps, répétitions, charge).
+// WOD de référence choisi comme WOD du jour : son score (temps ou tours) est suivi dans la page PR.
+function selectedBenchmark() {
+  const d = selectedDailyWod();
+  return d?.benchmark_id ? benchmarkFor(d.benchmark_id) : null;
+}
 function renderSessionScore(session = null) {
   const f = $("#sessionform"),
     w = selectedBoxWod(),
-    show = !!w && w.score_type !== "none",
+    bench = !w && selectedBenchmark(),
+    show = (!!w && w.score_type !== "none") || !!bench,
     box = $("#scoreinputs");
   $("#sessionscoresection").hidden = !show;
   if (!show) {
     box.innerHTML = "";
     box.dataset.wod = "";
+    return;
+  }
+  // Benchmark : pas de catégorie de box, mais Rx ou Scaled ; le score est suivi dans la page PR.
+  f.elements.score_category_id.closest("label").hidden = !!bench;
+  $("#sessionscoresection .hint").textContent = bench
+    ? "Facultatif : il est suivi dans la page PR, rubrique Benchmarks."
+    : "Facultatif : il alimente le classement du WOD entre les membres de la box.";
+  if (bench) {
+    const id = "bench:" + selectedDailyWod().id;
+    if (box.dataset.wod === id && !session) return;
+    box.dataset.wod = id;
+    box.innerHTML =
+      benchmarkScoreFields(bench, session?.score_value ?? null) +
+      `<label class="checkbox-label"><input type="checkbox" name="score_scaled" ${Number(session?.score_scaled) ? "checked" : ""}> Scaled</label>`;
     return;
   }
   if (box.dataset.wod === w.id && !session) return;
@@ -207,7 +227,12 @@ function renderSessionScore(session = null) {
 // Valeur du score saisie (null si vide) ; le temps est converti en secondes.
 function readSessionScore() {
   const f = $("#sessionform").elements,
-    w = selectedBoxWod();
+    w = selectedBoxWod(),
+    bench = !w && selectedBenchmark();
+  if (bench) {
+    const score = readBenchmarkScore(bench, f);
+    return score.error ? score : {score_value: score.value, score_scaled: !!f.score_scaled?.checked};
+  }
   if (!w || w.score_type === "none") return {score_value: null, score_category_id: null};
   let value = null;
   if (w.score_type === "time") {
@@ -528,7 +553,16 @@ async function saveSession(event) {
   }
   // WOD du jour : séance « hors programme » rattachée au WOD généré.
   const dailyWod = selectedDailyWod();
-  if (dailyWod) Object.assign(body, {program_id: "none", wod_id: "other", daily_wod_id: dailyWod.id});
+  if (dailyWod) {
+    // WOD de référence : score (temps ou tours) et Rx / Scaled.
+    const score = dailyWod.benchmark_id ? readSessionScore() : {};
+    if (score.error) {
+      $("#sessionerror").textContent = score.error;
+      button.disabled = false;
+      return;
+    }
+    Object.assign(body, {program_id: "none", wod_id: "other", daily_wod_id: dailyWod.id}, score);
+  }
   try {
     await api(id ? "/sessions/" + id : "/sessions", {method: id ? "PUT" : "POST", body: JSON.stringify(body)});
     if (!boxWod && !dailyWod)

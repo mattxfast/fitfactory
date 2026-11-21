@@ -15,7 +15,7 @@ Prochain numéro libre : **40**
 
 - [ ] **1.** Sauvegardes automatiques de la base D1 (copie hebdomadaire dans R2, en plus du Time Travel de 30 jours). *Reporté à plus tard.*
 - [x] **2.** Supprimer l'ancien Worker `fitfactory` (page « déménagé ») et l'ancienne base D1 `fitfactory`. *Après validation de Matt.* — fait le 19/11/2026
-- [ ] **3.** Envoi des e-mails « mot de passe oublié » : compte Resend, secret `RESEND_API_KEY`, variable `MAIL_FROM` (voir README, Configuration).
+- [ ] **3.** Envoi des e-mails « mot de passe oublié » : compte Resend, secret `RESEND_API_KEY`, variable `MAIL_FROM` (voir README, Configuration). *Matt : mis de côté pour le moment (dépend de l'idée 6, nom de domaine).*
 
 ## Déploiement
 
@@ -35,7 +35,7 @@ Prochain numéro libre : **40**
 - [ ] **11.** Objectifs : nombre de séances par semaine ou PR cible, avec une jauge. *Pas maintenant.*
 - [ ] **12.** Calculateur de charges : pourcentages des PR (WOD « à 75 % du 1RM »).
 - [ ] **13.** Rappeler le dernier commentaire laissé sur le même WOD au moment d'enregistrer une séance.
-- [ ] **14.** WOD du jour : WOD de référence tirés au hasard (Fran, Cindy, Murph…), sans IA, gratuits et hors ligne.
+- [x] **14.** WOD du jour : WOD de référence tirés au hasard (Fran, Cindy, Murph…), sans IA, gratuits et hors ligne. Résultats suivis dans la page PR (rubrique Benchmarks). — fait le 21/11/2026
 - [ ] **15.** WOD du jour : mode « Mon coach » (WOD proposé chaque matin, semaine équilibrée, notification possible).
 - [ ] **16.** WOD du jour : privilégier les mouvements peu travaillés ces dernières semaines.
 - [ ] **18.** Affichage dynamique sur un écran dans la box (WOD du jour, scores, anniversaires, mot du jour, événements) : voir le détail plus bas.

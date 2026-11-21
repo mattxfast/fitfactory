@@ -316,6 +316,7 @@ function renderPrs() {
   $("#prcards").innerHTML = families.length
     ? renderFitness() +
       renderProgressSection() +
+      renderReportSection() +
       families
         .map(method =>
           renderPrCategory(
@@ -326,6 +327,7 @@ function renderPrs() {
         .join("") +
       renderBenchmarkSection()
     : renderProgressSection() +
+      renderReportSection() +
       '<div class="card empty">Aucun mouvement dans le catalogue : l’administrateur doit d’abord en ajouter.</div>' +
       renderBenchmarkSection();
   const body = $("#prcards");
@@ -352,6 +354,7 @@ function renderPrs() {
   body.querySelectorAll("[data-add-pr]").forEach(b => (b.onclick = () => openPrForm(null, b.dataset.addPr)));
   bindBenchmarkSection(body);
   bindProgressSection(body);
+  bindReportSection(body);
   body.querySelectorAll("[data-fitness-profile]").forEach(b => (b.onclick = () => switchView("account")));
   // Détail des piliers replié par défaut ; l’état reste le même quand la page se redessine.
   body.querySelectorAll(".fitness-details").forEach(d => (d.ontoggle = () => (window.cfFitnessDetailOpen = d.open)));

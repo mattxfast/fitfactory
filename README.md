@@ -102,6 +102,13 @@ Une planification n'est pas une séance réalisée : elle sert de repère dans l
 - Calculée par le serveur (`GET /api/progress`, fonctions `trainingStats` et `activeWeekStreak`, réutilisées par le bilan mensuel), gardée hors ligne, rechargée à chaque ouverture de la page PR.
 - Une seule série par graphique : couleur `--chart-mark` propre à chaque thème (contraste d'au moins 3:1 avec le fond), grille et axes discrets, valeurs écrites en clair.
 
+### Bilan mensuel
+- **Bandeau** en haut de la page Séances pendant les 7 premiers jours du mois (« Ton bilan d'octobre est prêt »), si le mois écoulé a des séances ; le × le masque pour ce mois (mémorisé sur l'appareil).
+- **Notification** le 1er du mois vers 10 h (heure de Paris), aux comptes qui ont activé les notifications et ont des séances le mois écoulé, une seule par mois (table `monthly_report_notices`, paquets de 5 par passage de la tâche planifiée) ; elle ouvre `/?bilan=AAAA-MM`, qui affiche directement le bilan. `TEST_PARIS_DATE` (variable de test locale uniquement, comme `TEST_PARIS_HOUR`) simule la date de Paris.
+- **Page PR, rubrique BILANS MENSUELS** : les 12 derniers mois avec des séances (le mois en cours est marqué « en cours »).
+- **Fenêtre du bilan** : séances (comparées au mois précédent), semaines actives, jours d'entraînement ; répartition par origine ; mouvements les plus travaillés ; « À reprendre » (mouvements travaillés les deux mois précédents mais pas ce mois-ci) ; PR et benchmarks du mois ; scores saisis sur des WOD de box ; **le mot du coach**, écrit par l'IA à la demande (bouton, régénérable, compté dans la limite de 100 générations par 24 h, prompt `bilan-mensuel-v1` dans `src/report.js`), gardé avec le bilan (table `monthly_reports`).
+- Routes : `GET /api/monthly-reports` (mois disponibles), `GET /api/monthly-report?month=AAAA-MM`, `POST /api/monthly-report/comment` (`month`).
+
 ### Records personnels (PR)
 
 **PR Engine** (famille Distance) : deux formats à la saisie — « temps sur une distance » (250 m, 500 m, 1 km, 2 km, 5 km, 10 km, semi, marathon ou autre ; temps saisi dans trois cases Heures / Minutes / Secondes, le plus court est le meilleur) ou « distance dans un temps » (1, 2, 5, 10, 12 min Cooper, 20, 30 min, 1 h ou autre durée en heures / minutes / secondes ; distance en m ou km, la plus longue est la meilleure). Une carte par mouvement et par format (comme les RM), avec l'allure calculée (au 500 m pour le rameur, au km sinon ; masquée quand elle répète le temps) ; historique et courbe en mn:s pour les temps. Les anciens PR de distance seule restent affichés. Serveur : colonnes `personal_records.fixed_kind` (`distance` ou `time`) et `fixed_value` (m ou s), migration V29 ; valeurs validées (10 m à 100 km, 10 s à 24 h, temps entier en secondes).
@@ -219,6 +226,7 @@ Les évolutions applicatives V2 et V3 sont versionnées dans le Worker :
 - V22 ajoute les index `programs_user` (programmes d'un utilisateur) et `box_members_role_status` (demandes en attente), pour une box de plusieurs centaines de membres.
 - V33 ajoute la table `program_wod_movements` (mouvements à travailler propres à un WOD de programme).
 - V34 ajoute aux WOD du jour `benchmark_id` et `score_type`, aux séances `score_scaled` (Rx / Scaled), et la table `benchmark_results` (résultats de benchmarks saisis dans la page PR).
+- V35 ajoute les tables `monthly_reports` (commentaire du coach d'un bilan mensuel) et `monthly_report_notices` (notification du bilan, une par mois).
 
 Le Worker consulte `app_migrations` et n'exécute que les versions qui ne sont pas marquées comme terminées. Les migrations applicatives sont additives : elles ne réinitialisent pas les comptes ni les données existantes. Toute nouvelle évolution de schéma doit recevoir une nouvelle version de migration ; ne pas modifier rétroactivement une migration déjà appliquée.
 
@@ -266,7 +274,7 @@ Lancer les tests d'intégration (Node.js 20+ ; démarrent le Worker en local sur
 node --test tests/*.test.mjs
 ```
 
-Ils couvrent la connexion et le cookie de session, la limitation des tentatives, l'isolation des données entre utilisateurs, la création sans doublon des séances et PR rejouées (mode hors ligne), l'administration et les réglages des rappels (`tests/api.test.mjs`), ainsi que les administrateurs multiples, les box, gestionnaires, adhésions, WOD de box, scores, classements, programmes publics suivis et préférences du compte (`tests/boxes.test.mjs`), ainsi que la génération de WOD par IA avec un faux service OpenAI local (`tests/ai.test.mjs`) les WOD de référence (`tests/benchmarks.test.mjs`) et la progression (`tests/progress.test.mjs`).
+Ils couvrent la connexion et le cookie de session, la limitation des tentatives, l'isolation des données entre utilisateurs, la création sans doublon des séances et PR rejouées (mode hors ligne), l'administration et les réglages des rappels (`tests/api.test.mjs`), ainsi que les administrateurs multiples, les box, gestionnaires, adhésions, WOD de box, scores, classements, programmes publics suivis et préférences du compte (`tests/boxes.test.mjs`), ainsi que la génération de WOD par IA avec un faux service OpenAI local (`tests/ai.test.mjs`) les WOD de référence (`tests/benchmarks.test.mjs`) et la progression et le bilan mensuel (`tests/progress.test.mjs`).
 
 Déployer le Worker et les assets :
 

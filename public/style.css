@@ -4220,6 +4220,66 @@ button:disabled {
   border-radius: 5px;
   background: var(--chart-mark);
 }
+/* Bilan mensuel : bandeau de la page Séances, liste des mois (page PR), fenêtre du bilan. */
+.report-banner[hidden] {
+  display: none;
+}
+.report-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: var(--page-content-gap);
+  padding: 12px 14px;
+  border-left: 4px solid var(--chart-mark);
+}
+.report-banner-open {
+  flex: 1;
+  display: grid;
+  gap: 2px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.report-banner-open span {
+  font-size: 12px;
+  color: var(--muted);
+}
+.report-row {
+  width: 100%;
+  background: none;
+  color: inherit;
+  border-left: 0;
+  border-right: 0;
+  border-bottom: 0;
+  text-align: left;
+  cursor: pointer;
+}
+.report-list-items {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.report-line {
+  margin: 14px 0 0;
+  font-size: 13px;
+}
+.report-comment {
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border-left: 3px solid var(--chart-mark);
+  background: var(--content-bg);
+  font-size: 14px;
+  line-height: 1.5;
+}
+#reportcomment .smallbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
 /* WOD de référence : aperçu du WOD tiré au sort. */
 .bench-preview {
   max-height: 40vh;

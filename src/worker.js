@@ -25,6 +25,7 @@ import {
 } from "./nutrition.js";
 import {athleteProfileInput, computeFitness} from "./fitness.js";
 import {BENCHMARKS, benchmarkById, benchmarkOut, benchmarkMovementIds, benchmarkScore} from "./benchmarks.js";
+import {REPORT_PROMPT_VERSION, reportCoachComment} from "./report.js";
 const SESSION_DAYS = 30,
   enc = new TextEncoder();
 const json = (d, s = 200, h = {}) =>
@@ -540,6 +541,17 @@ async function ensureV2Schema(env) {
         env.DB.prepare("CREATE INDEX IF NOT EXISTS daily_wods_benchmark ON daily_wods(user_id,benchmark_id)"),
       ]);
     });
+    await runMigration("v35-monthly-reports", async () => {
+      // Bilan mensuel : commentaire du coach (IA, facultatif) et notification du 1er du mois (une par mois).
+      await env.DB.batch([
+        env.DB.prepare(
+          "CREATE TABLE IF NOT EXISTS monthly_reports (user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, month TEXT NOT NULL, comment TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(user_id,month))"
+        ),
+        env.DB.prepare(
+          "CREATE TABLE IF NOT EXISTS monthly_report_notices (user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, month TEXT NOT NULL)"
+        ),
+      ]);
+    });
   })().catch(err => {
     schemaReady = null;
     throw err;
@@ -845,6 +857,106 @@ async function activeWeekStreak(e, userId, now) {
     week = addDays(week, -7);
   }
   return streak;
+}
+// Bilan mensuel : mois « AAAA-MM » (jusqu'au mois en cours), premier et dernier jour, mois voisins.
+const monthStart = month => month + "-01";
+const monthEnd = month => addDays(monthStart(shiftMonth(month, 1)), -1);
+function shiftMonth(month, n) {
+  const [y, m] = month.split("-").map(Number),
+    d = new Date(Date.UTC(y, m - 1 + n, 1));
+  return d.toISOString().slice(0, 7);
+}
+const validMonth = (month, now) => /^\d{4}-(0[1-9]|1[0-2])$/.test(month) && month <= now.slice(0, 7);
+// Bilan d'un mois : séances (comparées au mois précédent), régularité, répartition, mouvements travaillés et à
+// reprendre (travaillés les deux mois précédents mais pas celui-ci), PR, benchmarks, scores de box, commentaire.
+async function monthlyReport(e, userId, month) {
+  const now = localToday(),
+    from = monthStart(month),
+    to = month === now.slice(0, 7) ? now : monthEnd(month),
+    prevMonth = shiftMonth(month, -1);
+  const [stats, prev, before, prs, manualBench, sessionBench, boxScores, saved] = await Promise.all([
+    trainingStats(e, userId, from, to),
+    trainingStats(e, userId, monthStart(prevMonth), monthEnd(prevMonth)),
+    trainingStats(e, userId, monthStart(shiftMonth(month, -2)), monthEnd(prevMonth)),
+    e.DB.prepare(
+      "SELECT pr.record_date,mc.name,mc.measurement_method,pr.value,pr.rep_count,pr.fixed_kind,pr.fixed_value FROM personal_records pr JOIN movement_catalog mc ON mc.id=pr.movement_id WHERE pr.user_id=? AND pr.record_date BETWEEN ? AND ? ORDER BY pr.record_date"
+    )
+      .bind(userId, from, to)
+      .all(),
+    e.DB.prepare(
+      "SELECT benchmark_id,result_date,value,scaled FROM benchmark_results WHERE user_id=? AND result_date BETWEEN ? AND ?"
+    )
+      .bind(userId, from, to)
+      .all(),
+    e.DB.prepare(
+      "SELECT dw.benchmark_id,s.session_date AS result_date,s.score_value AS value,COALESCE(s.score_scaled,0) AS scaled FROM training_sessions s JOIN daily_wods dw ON dw.id=s.daily_wod_id AND dw.user_id=s.user_id WHERE s.user_id=? AND dw.benchmark_id IS NOT NULL AND s.score_value IS NOT NULL AND s.session_date BETWEEN ? AND ?"
+    )
+      .bind(userId, from, to)
+      .all(),
+    e.DB.prepare(
+      "SELECT COUNT(*) AS n FROM training_sessions WHERE user_id=? AND box_wod_id IS NOT NULL AND score_value IS NOT NULL AND session_date BETWEEN ? AND ?"
+    )
+      .bind(userId, from, to)
+      .first(),
+    e.DB.prepare("SELECT comment FROM monthly_reports WHERE user_id=? AND month=?").bind(userId, month).first(),
+  ]);
+  const worked = new Set(stats.movements.map(x => x.name.toLowerCase()));
+  return {
+    month,
+    from,
+    to,
+    complete: to === monthEnd(month),
+    total: stats.total,
+    days: stats.days,
+    prev_total: prev.total,
+    active_weeks: stats.active_weeks,
+    weeks: stats.weeks.length,
+    by_source: stats.by_source,
+    movements: stats.movements,
+    to_resume: before.movements.filter(x => !worked.has(x.name.toLowerCase())).slice(0, 4),
+    prs: prs.results,
+    benchmarks: [...manualBench.results, ...sessionBench.results]
+      .map(x => ({...x, name: benchmarkById(x.benchmark_id)?.name || x.benchmark_id}))
+      .sort((a, b) => a.result_date.localeCompare(b.result_date)),
+    box_scores: boxScores?.n || 0,
+    comment: saved?.comment || "",
+  };
+}
+// Notification du 1er du mois, à 10 h (heure de Paris) : « ton bilan est prêt », une fois par mois, aux membres qui
+// ont des séances le mois écoulé ; par paquets (limites du plan gratuit), comme les rappels.
+async function sendMonthlyReportPushes(e) {
+  const hour = e.TEST_PARIS_HOUR ? Number(e.TEST_PARIS_HOUR) : parisHour(),
+    today = e.TEST_PARIS_DATE || localToday();
+  if (hour !== 10 || today.slice(8, 10) !== "01") return {sent: 0};
+  const month = shiftMonth(today.slice(0, 7), -1),
+    users = (
+      await e.DB.prepare(
+        "SELECT DISTINCT s.user_id FROM training_sessions s WHERE s.session_date BETWEEN ? AND ? AND EXISTS(SELECT 1 FROM push_subscriptions p WHERE p.user_id=s.user_id) AND NOT EXISTS(SELECT 1 FROM monthly_report_notices n WHERE n.user_id=s.user_id AND n.month=?) LIMIT ?"
+      )
+        .bind(monthStart(month), monthEnd(month), month, 5)
+        .all()
+    ).results.map(x => x.user_id);
+  if (!users.length) return {sent: 0};
+  const label = new Intl.DateTimeFormat("fr-FR", {month: "long", timeZone: "UTC"}).format(
+    new Date(monthStart(month) + "T12:00:00Z")
+  );
+  let sent = 0;
+  for (const userId of users) {
+    sent += (
+      await pushToUser(e, userId, {
+        title: "myFitFactory",
+        body: `Ton bilan ${/^[aeiou]/i.test(label) ? "d’" : "de "}${label} est prêt : séances, régularité, PR…`,
+        tag: "monthly-report",
+        url: "/?bilan=" + month,
+      })
+    ).sent;
+    await e.DB.prepare(
+      "INSERT INTO monthly_report_notices(user_id,month) VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET month=excluded.month"
+    )
+      .bind(userId, month)
+      .run();
+  }
+  return {sent};
 }
 // Un seul programme à la fois : un programme suivi ne chevauche aucun programme personnel en cours ou à venir.
 async function followOverlap(e, userId, start, end) {
@@ -2277,6 +2389,55 @@ async function api(r, e, p, ctx = null) {
     });
   }
   // Score de forme (page PR) : 7 piliers calculés à partir du profil, des PR, des séances et des classements de box.
+  // Bilan mensuel : mois disponibles (ceux qui ont des séances, 12 au plus), bilan d'un mois, commentaire du coach.
+  if (r.method === "GET" && p === "/api/monthly-reports") {
+    const x = await e.DB.prepare(
+      "SELECT substr(session_date,1,7) AS month,COUNT(*) AS sessions FROM training_sessions WHERE user_id=? GROUP BY month ORDER BY month DESC LIMIT 12"
+    )
+      .bind(u.id)
+      .all();
+    return json({months: x.results, current: localToday().slice(0, 7), ai: !!e.OPENAI_API_KEY});
+  }
+  if (r.method === "GET" && p === "/api/monthly-report") {
+    const month = new URL(r.url).searchParams.get("month") || "";
+    if (!validMonth(month, localToday())) return json({error: "Mois invalide."}, 400);
+    return json(await monthlyReport(e, u.id, month));
+  }
+  if (r.method === "POST" && p === "/api/monthly-report/comment") {
+    if (!e.OPENAI_API_KEY)
+      return json({error: "La génération par IA n'est pas encore configurée (clé OpenAI manquante)."}, 503);
+    const month = String((await r.json()).month || "");
+    if (!validMonth(month, localToday())) return json({error: "Mois invalide."}, 400);
+    const used = await e.DB.prepare(
+      "SELECT COUNT(*) AS n FROM ai_generations WHERE user_id=? AND created_at>datetime('now','-1 day')"
+    )
+      .bind(u.id)
+      .first();
+    if ((used?.n || 0) >= AI_DAILY_LIMIT)
+      return json({error: "Limite de " + AI_DAILY_LIMIT + " générations par 24 h atteinte. Réessaie demain."}, 429);
+    const report = await monthlyReport(e, u.id, month);
+    if (!report.total) return json({error: "Aucune séance ce mois-ci : rien à commenter."}, 400);
+    const profile = await e.DB.prepare("SELECT level,goals FROM ai_profiles WHERE user_id=?").bind(u.id).first(),
+      out = await reportCoachComment(e, report, profile);
+    if (out.error) return json({error: out.error}, 502);
+    await e.DB.batch([
+      e.DB.prepare(
+        "INSERT INTO monthly_reports(user_id,month,comment) VALUES(?,?,?) ON CONFLICT(user_id,month) DO UPDATE SET comment=excluded.comment,created_at=CURRENT_TIMESTAMP"
+      ).bind(u.id, month, out.comment),
+      e.DB.prepare(
+        "INSERT INTO ai_generations(id,user_id,wod_id,week_start,options,result,prompt_version,model) VALUES(?,?,NULL,?,?,?,?,?)"
+      ).bind(
+        uid(),
+        u.id,
+        monthStart(month),
+        JSON.stringify({month}),
+        JSON.stringify({comment: out.comment}),
+        REPORT_PROMPT_VERSION,
+        out.model
+      ),
+    ]);
+    return json({ok: true, comment: out.comment});
+  }
   // Progression (page PR) : 12 dernières semaines, semaine en cours comprise.
   if (r.method === "GET" && p === "/api/progress") {
     const now = localToday(),
@@ -3615,7 +3776,7 @@ export default {
               e.DB.prepare("DELETE FROM login_attempts WHERE attempted_at<=?").bind(now - 86400),
               e.DB.prepare("DELETE FROM password_resets WHERE expires_at<=?").bind(now - 86400),
             ])
-          : sendReminders(e)
+          : Promise.all([sendReminders(e), sendMonthlyReportPushes(e)])
       )
     );
   },

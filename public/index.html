@@ -226,6 +226,7 @@
           </button>
         </nav>
         <section id="view-sessions">
+          <div id="reportbanner" class="report-banner card" hidden></div>
           <div id="weekboard"></div>
           <div class="toolbar section-toolbar" id="sessiontoolbar">
             <button
@@ -1331,6 +1332,13 @@
           <div class="error" id="benchresulterror"></div>
         </form>
       </dialog>
+      <dialog id="reportdialog" class="modal">
+        <div class="sectionhead">
+          <h2 id="reporttitle">Bilan du mois</h2>
+          <button type="button" class="iconbtn" id="closereport">×</button>
+        </div>
+        <div id="reportbody" class="report-body"></div>
+      </dialog>
       <dialog id="prhistorydialog" class="modal">
         <div class="sectionhead pr-history-page-title">
           <h2 id="prhistorytitle">Historique du PR</h2>
@@ -1357,6 +1365,7 @@
     <script src="/js/daily-wod.js"></script>
     <script src="/js/benchmarks.js"></script>
     <script src="/js/progress.js"></script>
+    <script src="/js/report.js"></script>
     <script src="/js/account.js"></script>
     <script src="/js/ui.js"></script>
     <script src="/js/boot.js"></script>

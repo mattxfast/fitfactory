@@ -503,6 +503,12 @@ async function ensureV2Schema(env) {
       if (!columns.results.some(column => column.name === "shared_from_user_id"))
         await env.DB.prepare("ALTER TABLE training_sessions ADD COLUMN shared_from_user_id TEXT").run();
     });
+    await runMigration("v32-session-tag-push", async () => {
+      // Notification push d'une invitation : date d'envoi (une seule notification par invitation).
+      const columns = await env.DB.prepare("PRAGMA table_info(session_tags)").all();
+      if (!columns.results.some(column => column.name === "notified_at"))
+        await env.DB.prepare("ALTER TABLE session_tags ADD COLUMN notified_at TEXT").run();
+    });
   })().catch(err => {
     schemaReady = null;
     throw err;
@@ -581,6 +587,58 @@ async function pushToUser(e, userId, message) {
     }
   }
   return {sent, devices: subs.length};
+}
+// Notification push aux partenaires tagués pas encore prévenus (une seule par invitation, sur les appareils où ils ont
+// activé les notifications). Au plus 10 envois par requête (plan gratuit : temps de calcul) ; au-delà, la pastille
+// rouge de l'onglet Séances suffit.
+async function notifyTaggedPartners(e, author, sessionId) {
+  const rows = (
+    await e.DB.prepare(
+      "SELECT t.id,t.to_user_id,s.session_date FROM session_tags t JOIN training_sessions s ON s.id=t.session_id WHERE t.session_id=? AND t.from_user_id=? AND t.status='pending' AND t.notified_at IS NULL"
+    )
+      .bind(sessionId, author.id)
+      .all()
+  ).results;
+  if (!rows.length) return;
+  const list = items => items.map(() => "?").join(",");
+  await e.DB.prepare(`UPDATE session_tags SET notified_at=? WHERE id IN (${list(rows)})`)
+    .bind(new Date().toISOString(), ...rows.map(x => x.id))
+    .run();
+  const subs = (
+    await e.DB.prepare(
+      `SELECT endpoint,p256dh,auth FROM push_subscriptions WHERE user_id IN (${list(rows)}) ORDER BY user_id LIMIT 10`
+    )
+      .bind(...rows.map(x => x.to_user_id))
+      .all()
+  ).results;
+  if (!subs.length) return;
+  const keys = await vapidKeys(e.DB),
+    subject = "mailto:" + (String(e.ADMIN_EMAIL || "").trim() || "admin@fitfactory.invalid"),
+    name = [author.first_name, author.last_name].filter(Boolean).join(" ") || "Un partenaire",
+    date = rows[0].session_date.split("-").reverse().join("/"),
+    message = {
+      title: "myFitFactory",
+      body: `${name} t’a tagué sur sa séance du ${date} : ajoute-la à ton historique en un toucher.`,
+      tag: "session-tag",
+      url: "/",
+    };
+  for (const sub of subs) {
+    try {
+      const status = await sendPush(sub, keys, subject, message);
+      if (status === 404 || status === 410)
+        await e.DB.prepare("DELETE FROM push_subscriptions WHERE endpoint=?").bind(sub.endpoint).run();
+      else if (status < 200 || status >= 300) console.error("myFitFactory push tag", {status});
+    } catch (err) {
+      console.error("myFitFactory push tag", {message: err?.message});
+    }
+  }
+}
+// Envoi après la réponse quand c'est possible (ctx.waitUntil), sans jamais faire échouer l'enregistrement.
+function afterTagging(ctx, e, author, sessionId) {
+  const job = notifyTaggedPartners(e, author, sessionId).catch(err =>
+    console.error("myFitFactory push tag", {message: err?.message})
+  );
+  return ctx?.waitUntil ? ctx.waitUntil(job) : job;
 }
 // Envoi des rappels compatible avec le plan gratuit de Cloudflare (10 ms de calcul, 50 appels sortants et 50 requêtes
 // D1 par exécution) : la tâche tourne chaque minute et envoie au plus REMINDER_BATCH notifications par passage (environ
@@ -1018,7 +1076,7 @@ async function movementCheckStatements(
     ),
   ];
 }
-async function api(r, e, p) {
+async function api(r, e, p, ctx = null) {
   const adminEmail = ownerEmail(e);
   if (r.method === "POST" && p === "/api/register") {
     const b = await r.json(),
@@ -3082,6 +3140,7 @@ async function api(r, e, p) {
       ...checks,
       ...sessionTagStatements(e, u.id, id, sessionTagIds(b, u.id) || []),
     ]);
+    await afterTagging(ctx, e, u, id);
     return json({ok: true, id});
   }
   m = p.match(/^\/api\/sessions\/([\w-]+)$/);
@@ -3189,6 +3248,7 @@ async function api(r, e, p) {
           ]
         : []),
     ]);
+    if (tagIds?.length) await afterTagging(ctx, e, u, m[1]);
     return json({ok: true});
   }
   if (m && r.method === "DELETE") {
@@ -3317,12 +3377,12 @@ export default {
       )
     );
   },
-  async fetch(r, e) {
+  async fetch(r, e, ctx) {
     const u = new URL(r.url);
     if (!u.pathname.startsWith("/api/")) return e.ASSETS.fetch(r);
     try {
       await ensureV2Schema(e);
-      const res = await api(r, e, u.pathname),
+      const res = await api(r, e, u.pathname, ctx),
         legacy = cookie(r, LEGACY_SESSION_COOKIE);
       if (legacy) {
         if (!cookie(r, SESSION_COOKIE) && !res.headers.has("set-cookie"))

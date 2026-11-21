@@ -273,6 +273,7 @@ document.querySelectorAll("[data-box-page]").forEach(
 );
 $("#managedboxselect").onchange = e => {
   managedBoxId = e.target.value;
+  boxWodTypeFilter.clear();
   managedBox = null;
   loadManagedBox();
 };
@@ -322,6 +323,19 @@ let boxWodView = (() => {
     return "list";
   }
 })();
+// Filtre par type de WOD (WOD, Hyrox, Haltéro…) sur la liste et le planning ; vide = tous les types.
+const boxWodTypeFilter = new Set();
+const filteredBoxWods = d => (boxWodTypeFilter.size ? d.wods.filter(w => boxWodTypeFilter.has(w.type_id)) : d.wods);
+function boxWodTypeChips(d) {
+  const types = (d.types || []).filter(t => d.wods.some(w => w.type_id === t.id) || boxWodTypeFilter.has(t.id));
+  if (types.length < 2 && !boxWodTypeFilter.size) return "";
+  return `<div class="choice-chips box-wod-types" aria-label="Filtrer par type de WOD"><label><input type="checkbox" data-wod-type-filter="" ${boxWodTypeFilter.size ? "" : "checked"}><span>Tous</span></label>${types
+    .map(
+      t =>
+        `<label><input type="checkbox" data-wod-type-filter="${t.id}" ${boxWodTypeFilter.has(t.id) ? "checked" : ""}><span>${esc(t.name)}</span></label>`
+    )
+    .join("")}</div>`;
+}
 // Planning : une colonne par jour (lundi → dimanche), les WOD du jour en blocs colorés selon leur type de WOD.
 function boxWodPlanning(d) {
   const types = d.types || [],
@@ -331,7 +345,7 @@ function boxWodPlanning(d) {
         .replace(/^./, c => c.toUpperCase());
   return `<div class="box-planning">${Array.from({length: 7}, (_, i) => {
     const date = addDays(managedWodWeek, i),
-      wods = d.wods.filter(w => w.wod_date === date);
+      wods = filteredBoxWods(d).filter(w => w.wod_date === date);
     return `<section class="box-planning-day ${date === today() ? "today" : ""}"><div class="box-planning-head"><b>${esc(dayName(date))}</b><button type="button" class="smallbtn" data-add-boxwod-day="${date}" aria-label="Nouveau WOD le ${esc(fmt(date))}" title="Nouveau WOD ce jour">＋</button></div><div class="box-planning-body">${
       wods
         .map(w => {
@@ -358,10 +372,11 @@ function boxWodsGroup(d) {
         `<label><input type="radio" name="boxwodview" value="${v}" ${boxWodView === v ? "checked" : ""}><span>${label}</span></label>`
     )
     .join("")}</div>`;
+  const filters = boxWodTypeChips(d);
   if (boxWodView === "planning")
-    return `<div id="boxwodboard" class="planning">${nav}${views}${boxWodPlanning(d)}</div>`;
-  return `<div id="boxwodboard">${nav}${views}<div class="admin-data-list">${
-    d.wods
+    return `<div id="boxwodboard" class="planning">${nav}${views}${filters}${boxWodPlanning(d)}</div>`;
+  return `<div id="boxwodboard">${nav}${views}${filters}<div class="admin-data-list">${
+    filteredBoxWods(d)
       .map(
         w =>
           `<div class="admin-row box-wod-row"><span class="admin-row-actions"><button class="smallbtn" data-edit-boxwod="${w.id}" aria-label="Modifier" title="Modifier">${BOX_ICONS.edit}</button><button class="smallbtn delete" data-del-boxwod="${w.id}" aria-label="Supprimer" title="Supprimer">${BOX_ICONS.del}</button></span><b>${esc(managerWodTitle(w))}</b><span class="box-wod-score"><span class="tracked-tag">${esc(SCORE_LABELS[w.score_type] || "")}</span></span>${w.content ? `<small class="box-wod-content">${esc(w.content)}</small>` : ""}</div>`
@@ -380,6 +395,9 @@ function openBoxWod(w = null, presetDate = "") {
   const types = managedBox?.types || [];
   f.elements.type_id.innerHTML = types.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join("");
   f.elements.type_id.value = w?.type_id && types.some(t => t.id === w.type_id) ? w.type_id : types[0]?.id || "";
+  // Un seul type filtré dans la page WOD : un nouveau WOD prend ce type par défaut.
+  if (!w && boxWodTypeFilter.size === 1 && types.some(t => boxWodTypeFilter.has(t.id)))
+    f.elements.type_id.value = [...boxWodTypeFilter][0];
   f.elements.name.value = w?.name && w.name !== defaultWodName(w.wod_date, w.type_name) ? w.name : "";
   syncBoxWodPlaceholder();
   f.elements.score_type.value = w?.score_type || "time";
@@ -643,6 +661,16 @@ function bindManagedBox() {
           try {
             localStorage.setItem("fitfactory-boxwod-view", boxWodView);
           } catch {}
+          renderManagedBox();
+        })
+    );
+    root.querySelectorAll("[data-wod-type-filter]").forEach(
+      i =>
+        (i.onchange = () => {
+          const id = i.dataset.wodTypeFilter;
+          if (!id) boxWodTypeFilter.clear();
+          else if (boxWodTypeFilter.has(id)) boxWodTypeFilter.delete(id);
+          else boxWodTypeFilter.add(id);
           renderManagedBox();
         })
     );

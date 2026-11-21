@@ -5102,7 +5102,8 @@ button:active:not(:disabled) {
   }
 }
 /* Espace gestionnaire, page WOD : choix Liste / Planning et planning de la semaine (une colonne par jour). */
-.box-wod-views {
+.box-wod-views,
+.box-wod-types {
   justify-content: center;
   margin: 0 0 var(--section-content-gap);
 }

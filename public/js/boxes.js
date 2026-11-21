@@ -313,11 +313,54 @@ function managerWodTitle(w) {
     : wodDay(w.wod_date) + " · " + boxWodLabel(w);
 }
 // WOD de la box : navigation par semaine (WOD passés et à venir), ajout, modification, suppression.
+// Vue de la page WOD : liste (téléphone) ou planning de la semaine (une colonne par jour, pratique sur PC).
+// Choix gardé sur l’appareil.
+let boxWodView = (() => {
+  try {
+    return localStorage.getItem("fitfactory-boxwod-view") === "planning" ? "planning" : "list";
+  } catch {
+    return "list";
+  }
+})();
+// Planning : une colonne par jour (lundi → dimanche), les WOD du jour en blocs colorés selon leur type de WOD.
+function boxWodPlanning(d) {
+  const types = d.types || [],
+    dayName = date =>
+      new Intl.DateTimeFormat("fr-FR", {weekday: "long", day: "numeric"})
+        .format(new Date(date + "T12:00:00"))
+        .replace(/^./, c => c.toUpperCase());
+  return `<div class="box-planning">${Array.from({length: 7}, (_, i) => {
+    const date = addDays(managedWodWeek, i),
+      wods = d.wods.filter(w => w.wod_date === date);
+    return `<section class="box-planning-day ${date === today() ? "today" : ""}"><div class="box-planning-head"><b>${esc(dayName(date))}</b><button type="button" class="smallbtn" data-add-boxwod-day="${date}" aria-label="Nouveau WOD le ${esc(fmt(date))}" title="Nouveau WOD ce jour">＋</button></div><div class="box-planning-body">${
+      wods
+        .map(w => {
+          const t = Math.max(
+            0,
+            types.findIndex(x => x.id === w.type_id)
+          );
+          return `<button type="button" class="box-planning-wod wod-block-${t % 6}" data-edit-boxwod="${w.id}" title="Modifier"><small>${esc(w.type_name || "WOD")}${w.score_type !== "none" ? " · " + esc(SCORE_LABELS[w.score_type] || "") : ""}</small><b>${esc(w.name)}</b>${w.content ? `<span>${esc(w.content)}</span>` : ""}</button>`;
+        })
+        .join("") || `<p class="box-planning-empty">Pas de WOD</p>`
+    }</div></section>`;
+  }).join("")}</div>`;
+}
 function boxWodsGroup(d) {
   // Comme la page Séances : la semaine en bandeau principal (avec le ＋ « Nouveau WOD »), les WOD dessous.
   const week = managedWodWeek,
     nav = `<div class="weekbar card"><div class="weeknav"><button type="button" class="smallbtn" id="boxwodprev" aria-label="Semaine précédente" title="Semaine précédente">‹</button><div class="weekdate-label"><button type="button" class="week-current" id="boxwodthisweek" title="Revenir à la semaine en cours">Semaine du</button><input id="boxwodweek" type="date" value="${week}" aria-label="Semaine du"></div><button type="button" class="smallbtn" id="boxwodnext" aria-label="Semaine suivante" title="Semaine suivante">›</button><button type="button" class="admin-add" id="addboxwod" aria-label="Nouveau WOD" title="Nouveau WOD">＋</button></div></div>`;
-  return `<div id="boxwodboard">${nav}<div class="admin-data-list">${
+  const views = `<div class="choice-chips box-wod-views" role="radiogroup" aria-label="Affichage des WOD">${[
+    ["list", "Liste"],
+    ["planning", "Planning"],
+  ]
+    .map(
+      ([v, label]) =>
+        `<label><input type="radio" name="boxwodview" value="${v}" ${boxWodView === v ? "checked" : ""}><span>${label}</span></label>`
+    )
+    .join("")}</div>`;
+  if (boxWodView === "planning")
+    return `<div id="boxwodboard" class="planning">${nav}${views}${boxWodPlanning(d)}</div>`;
+  return `<div id="boxwodboard">${nav}${views}<div class="admin-data-list">${
     d.wods
       .map(
         w =>
@@ -326,13 +369,14 @@ function boxWodsGroup(d) {
       .join("") || boxEmpty("Pas de WOD cette semaine")
   }</div></div>`;
 }
-function openBoxWod(w = null) {
+function openBoxWod(w = null, presetDate = "") {
   const f = $("#boxwodform"),
     now = today(),
     weekEnd = addDays(managedWodWeek, 6);
   f.reset();
   f.elements.id.value = w?.id || "";
-  f.elements.wod_date.value = w?.wod_date || (now >= managedWodWeek && now <= weekEnd ? now : managedWodWeek);
+  f.elements.wod_date.value =
+    w?.wod_date || presetDate || (now >= managedWodWeek && now <= weekEnd ? now : managedWodWeek);
   const types = managedBox?.types || [];
   f.elements.type_id.innerHTML = types.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join("");
   f.elements.type_id.value = w?.type_id && types.some(t => t.id === w.type_id) ? w.type_id : types[0]?.id || "";
@@ -592,6 +636,19 @@ function bindManagedBox() {
   );
   if (boxPage === "wods") {
     $("#addboxwod").onclick = () => openBoxWod();
+    root.querySelectorAll('input[name="boxwodview"]').forEach(
+      i =>
+        (i.onchange = () => {
+          boxWodView = i.value;
+          try {
+            localStorage.setItem("fitfactory-boxwod-view", boxWodView);
+          } catch {}
+          renderManagedBox();
+        })
+    );
+    root
+      .querySelectorAll("[data-add-boxwod-day]")
+      .forEach(b => (b.onclick = () => openBoxWod(null, b.dataset.addBoxwodDay)));
     $("#boxwodprev").onclick = () => changeManagedWodWeek(addDays(managedWodWeek, -7));
     $("#boxwodthisweek").onclick = () => changeManagedWodWeek(mondayOf(today()));
     $("#boxwodnext").onclick = () => changeManagedWodWeek(addDays(managedWodWeek, 7));

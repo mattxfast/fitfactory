@@ -5101,3 +5101,104 @@ button:active:not(:disabled) {
     grid-column: 2;
   }
 }
+/* Espace gestionnaire, page WOD : choix Liste / Planning et planning de la semaine (une colonne par jour). */
+.box-wod-views {
+  justify-content: center;
+  margin: 0 0 var(--section-content-gap);
+}
+/* Le planning déborde de la largeur de page pour profiter des grands écrans ; sur téléphone, défilement horizontal. */
+#boxwodboard.planning .box-planning {
+  position: relative;
+  left: 50%;
+  width: min(1680px, calc(100vw - 32px));
+  transform: translateX(-50%);
+  display: grid;
+  grid-template-columns: repeat(7, minmax(175px, 1fr));
+  gap: 0;
+  overflow-x: auto;
+  background: var(--content-bg);
+  border: 1px solid var(--content-border);
+  border-radius: 16px;
+}
+.box-planning-day {
+  min-width: 0;
+  border-left: 1px solid var(--content-border);
+}
+.box-planning-day:first-child {
+  border-left: 0;
+}
+.box-planning-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 12px 10px;
+  border-bottom: 1px solid var(--content-border);
+  font: 700 16px Manrope;
+}
+.box-planning-day.today .box-planning-head b {
+  color: var(--action-ink);
+}
+.box-planning-head .smallbtn {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  flex: 0 0 auto;
+}
+.box-planning-body {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 10px;
+  min-height: 160px;
+}
+.box-planning-wod {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 12px;
+  text-align: left;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--block-color) 22%, var(--surface));
+  cursor: pointer;
+}
+.box-planning-wod small {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted-strong);
+}
+.box-planning-wod b {
+  font: 700 15px Manrope;
+}
+.box-planning-wod span {
+  white-space: pre-line;
+  font-size: 14px;
+  line-height: 1.4;
+}
+.box-planning-empty {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+  text-align: center;
+}
+/* Couleur d'un bloc selon la position de son type de WOD dans la liste de la box. */
+.wod-block-0 {
+  --block-color: #e8743b;
+}
+.wod-block-1 {
+  --block-color: #f2c12e;
+}
+.wod-block-2 {
+  --block-color: #3b82f6;
+}
+.wod-block-3 {
+  --block-color: #22a06b;
+}
+.wod-block-4 {
+  --block-color: #8b5cf6;
+}
+.wod-block-5 {
+  --block-color: #e5484d;
+}

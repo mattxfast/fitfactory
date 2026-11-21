@@ -326,6 +326,18 @@ const boxWodContent = blocks =>
   BOX_WOD_BLOCKS.filter(([key]) => String(blocks[key] || "").trim())
     .map(([key, label]) => label + "\n" + String(blocks[key]).replace(/\s+$/, ""))
     .join("\n\n");
+// Blocs remplis d’un WOD [titre, texte] ; un WOD saisi sans blocs donne un seul morceau sans titre.
+function boxWodBlockParts(w) {
+  let blocks = null;
+  try {
+    blocks = w.blocks ? JSON.parse(w.blocks) : null;
+  } catch {}
+  if (!blocks) return w.content ? [["", w.content]] : [];
+  return BOX_WOD_BLOCKS.filter(([key]) => String(blocks[key] || "").trim()).map(([key, label]) => [
+    label,
+    String(blocks[key]).replace(/\s+$/, ""),
+  ]);
+}
 // Vue de la page WOD : liste (téléphone) ou planning de la semaine (une colonne par jour, pratique sur PC).
 // Choix gardé sur l’appareil.
 let boxWodView = (() => {
@@ -365,7 +377,14 @@ function boxWodPlanning(d) {
             0,
             types.findIndex(x => x.id === w.type_id)
           );
-          return `<button type="button" class="box-planning-wod wod-block-${t % 6}" data-edit-boxwod="${w.id}" title="Modifier"><small>${esc(w.type_name || "WOD")}${w.score_type !== "none" ? " · " + esc(SCORE_LABELS[w.score_type] || "") : ""}</small><b>${esc(w.name)}</b>${w.content ? `<span>${esc(w.content)}</span>` : ""}</button>`;
+          return `<button type="button" class="box-planning-wod wod-block-${t % 6}" data-edit-boxwod="${w.id}" title="Modifier"><small>${esc(w.type_name || "WOD")}</small><b>${esc(w.name)}</b>${boxWodBlockParts(
+            w
+          )
+            .map(
+              ([label, text]) =>
+                `<span class="box-planning-part">${label ? `<em>${esc(label)}</em>` : ""}${esc(text)}</span>`
+            )
+            .join("")}</button>`;
         })
         .join("") || `<p class="box-planning-empty">Pas de WOD</p>`
     }</div></section>`;

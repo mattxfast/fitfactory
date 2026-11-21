@@ -100,7 +100,7 @@ test("WOD du jour : génération, chrono et mouvements reconnus", async () => {
   dailyId = wod.id;
   assert.equal(wod.title, "Thrusters et burpees");
   assert.equal(wod.wod_date, today());
-  assert.match(wod.content, /AMRAP 15 MIN/);
+  assert.match(wod.content, /⚡ METCON — AMRAP 15 min\n/);
   assert.deepEqual(wod.chrono, {
     mode: "amrap",
     minutes: 15,
@@ -144,7 +144,7 @@ test("WOD du jour : séance rattachée, remplacement et suppression bloqués", a
   const s = (await weekData(alice)).sessions.find(x => x.id === saved.data.id);
   assert.equal(s.daily_wod_id, dailyId);
   assert.equal(s.wod_name, "Thrusters et burpees");
-  assert.match(s.planned_comment, /AMRAP 15 MIN/);
+  assert.match(s.planned_comment, /⚡ METCON — AMRAP 15 min/);
   assert.equal(s.program_name, "Hors programme");
 
   assert.equal((await alice.post("/daily-wods", request({replace_id: dailyId}))).status, 409);

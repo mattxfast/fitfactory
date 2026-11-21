@@ -1,7 +1,7 @@
 // Génération de WOD par IA (API OpenAI, sans dépendance) : options de séance, prompt modèle, appel et mise en texte.
 // Le Worker (src/worker.js) lit le contexte en base (profil, records, programme, séances) et enregistre le résultat.
 
-export const AI_PROMPT_VERSION = "wod-seance-v1";
+export const AI_PROMPT_VERSION = "wod-seance-v2";
 export const AI_DAILY_LIMIT = 100; // générations par utilisateur et par 24 h (maîtrise du coût)
 export const AI_DEFAULT_MODEL = "gpt-5-mini";
 export const AI_LEVELS = {
@@ -19,6 +19,12 @@ const BLOCK_LABELS = {
   metcon: "Metcon",
   retour_au_calme: "Retour au calme",
 };
+// Icône de chaque rubrique dans le texte du WOD, pour la repérer d’un coup d’œil (le texte reste modifiable à la main).
+const BLOCK_ICONS = {echauffement: "🔥", technique: "🎯", force: "🏋️", metcon: "⚡", retour_au_calme: "🧘"};
+// Consignes de rédaction communes : le texte est mis en forme par l’application (rubriques, puces) à partir du JSON.
+const WRITING_RULES = `- Rédaction : dans chaque bloc, "description" tient en une ou deux phrases courtes (intention, consignes d'exécution, repos). Ne répète ni le nom du bloc, ni le format, ni la durée, et ne liste pas les mouvements dans la description : ils vont dans "mouvements", un par ligne.
+- "format" est court : « AMRAP 12 min », « EMOM 10 min », « For Time », « 5 x 3 », « 21-15-9 »… ou null.
+- Pour chaque mouvement : "reps" (ex. « 5 », « 3 x 5 », « 200 m ») et "charge" (ex. « 75 % 1RM », « 43/30 kg ») courts ; "scaling" seulement si utile, en quelques mots.`;
 const FAMILY = {load: "Lift", force: "Force", reps: "Gym", distance: "Engine"};
 
 const text = (v, max) =>
@@ -73,6 +79,7 @@ Règles :
 - Respecte les contraintes de l'athlète ; propose une alternative pour tout mouvement qui ne convient pas.
 - Assure la progression et la variété avec le programme et les séances récentes : évite de solliciter lourdement le même groupe musculaire deux jours de suite.
 - Sois concis : le texte final doit tenir sur un écran de téléphone.
+${WRITING_RULES}
 - Rédige en français.
 - Si la demande est incompatible (trop de blocs pour la durée, par exemple), adapte au mieux et explique-le dans "notes_coach".`;
 
@@ -226,7 +233,7 @@ export async function callOpenAI(env, prompt) {
 }
 
 // ----- WOD du jour (page Séances) : un entraînement hors programme, généré pour aujourd'hui ou demain -----
-export const DAILY_PROMPT_VERSION = "wod-du-jour-v1";
+export const DAILY_PROMPT_VERSION = "wod-du-jour-v2";
 export const DAILY_WOD_LIMIT = 10; // WOD du jour par utilisateur et par 24 h (en plus de la limite générale)
 export const DAILY_PLACES = {
   box: "En box (matériel CrossFit complet)",
@@ -261,6 +268,7 @@ Règles :
 - Assure la variété avec les séances récentes : évite de solliciter lourdement le même groupe musculaire que la veille.
 - Le champ "chrono" décrit le minuteur du metcon : mode "fortime" (minutes = time cap, ou null sans cap), "amrap" (minutes = durée), "emom" (intervalle_s = durée d'un intervalle en secondes, tours = nombre d'intervalles), "tabata" (travail_s, repos_s, tours). Mets null dans les champs qui ne concernent pas le mode, et mode "aucun" si le metcon ne se chronomètre pas ainsi.
 - Sois concis : le texte final doit tenir sur un écran de téléphone.
+${WRITING_RULES}
 - Rédige en français.`;
 
 export function buildDailyPrompt(c) {
@@ -418,26 +426,33 @@ export function dailyMovementIds(wod, catalog) {
 // Mise en texte du WOD (2 000 caractères au plus). withTitle : première ligne « titre (~durée) », gardée pour le WOD du
 // jour (elle lui sert de titre) ; pas pour un WOD de programme, qui a déjà son nom.
 export function wodToText(wod, max = 2000, withTitle = true) {
+  // Une rubrique par bloc : « ⚡ METCON — AMRAP 12 min · 15 min », consignes, puis un mouvement par ligne.
   const render = withScaling => {
     const out = withTitle
       ? [text(wod.titre, 120) + (wod.duree_estimee_min ? " (~" + wod.duree_estimee_min + " min)" : "")]
       : [];
     for (const b of wod.blocs) {
-      const head = [BLOCK_LABELS[b.type] || b.type, b.format, b.duree_min ? b.duree_min + " min" : ""]
-        .filter(Boolean)
-        .join(" · ");
+      const format = text(b.format, 60),
+        details = [
+          format,
+          b.duree_min && !new RegExp("\\b" + b.duree_min + "\\s*min", "i").test(format) ? b.duree_min + " min" : "",
+          b.time_cap_min ? "cap " + b.time_cap_min + " min" : "",
+        ].filter(Boolean);
       if (out.length) out.push("");
-      out.push(head.toUpperCase() + (b.time_cap_min ? " (cap " + b.time_cap_min + " min)" : ""));
+      out.push(
+        [BLOCK_ICONS[b.type], (BLOCK_LABELS[b.type] || b.type).toUpperCase()].filter(Boolean).join(" ") +
+          (details.length ? " — " + details.join(" · ") : "")
+      );
       if (b.description) out.push(text(b.description, 400));
       for (const m of b.mouvements || []) {
-        let line = "- " + [m.reps, m.nom].filter(Boolean).join(" ");
+        let line = "• " + [m.reps, m.nom].filter(Boolean).join(" ");
         if (m.charge) line += " @ " + m.charge;
-        if (withScaling && m.scaling) line += " (adapté : " + m.scaling + ")";
         out.push(line);
+        if (withScaling && m.scaling) out.push("   ↳ adapté : " + text(m.scaling, 120));
       }
     }
-    if (wod.objectif_score) out.push("", "Objectif : " + text(wod.objectif_score, 200));
-    if (wod.notes_coach) out.push("", "Note du coach : " + text(wod.notes_coach, 300));
+    if (wod.objectif_score) out.push("", "🏁 Objectif : " + text(wod.objectif_score, 200));
+    if (wod.notes_coach) out.push("", "💬 Note du coach : " + text(wod.notes_coach, 300));
     return out.join("\n");
   };
   const full = render(true);

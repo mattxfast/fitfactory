@@ -128,9 +128,10 @@ test("IA : génération d'un WOD pour une semaine", async () => {
   const res = await alice.post(`/wods/${wodId}/generate`, options({instructions: "Focus jambes"}));
   assert.equal(res.status, 200, JSON.stringify(res.data));
   // pas de titre en tête : le contenu commence par le premier bloc
-  assert.match(res.data.content, /^ÉCHAUFFEMENT · 10 MIN\n/);
+  assert.match(res.data.content, /^🔥 ÉCHAUFFEMENT — 10 min\n/);
+  assert.match(res.data.content, /\n\n🏋️ FORCE — 5x5 · 20 min\n/);
   assert.doesNotMatch(res.data.content, /Squat et sprint/);
-  assert.match(res.data.content, /- 5 Back squat @ 75% 1RM/);
+  assert.match(res.data.content, /• 5 Back squat @ 75% 1RM/);
   const call = requests.at(-1);
   assert.equal(call.auth, "Bearer cle-de-test");
   assert.equal(call.body.text.format.type, "json_schema");

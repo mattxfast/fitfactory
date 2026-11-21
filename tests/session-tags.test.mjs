@@ -83,6 +83,11 @@ test("partenaires : invitation, acceptation et copie indépendante", async () =>
   assert.equal(copy.actual_comment, "5 x 5 back squat");
   assert.equal(copy.shared_from_first_name, "Alice");
   assert.deepEqual(
+    bobWeek.sharedPartners.filter(x => x.session_id === copy.id).map(x => x.first_name),
+    ["Alice"],
+    "le partenaire voit avec qui il s'est entraîné"
+  );
+  assert.deepEqual(
     bobWeek.catalogChecks.filter(c => c.session_id === copy.id).map(c => c.catalog_movement_id),
     [squatId]
   );

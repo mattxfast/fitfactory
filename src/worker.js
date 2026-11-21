@@ -2972,7 +2972,7 @@ async function api(r, e, p, ctx = null) {
       from = q.get("from"),
       to = q.get("to");
     if (!validDate(from) || !validDate(to) || from > to) return json({error: "Période invalide."}, 400);
-    const [s, f, pl, c, cc, bw, dw, tg] = await Promise.all([
+    const [s, f, pl, c, cc, bw, dw, tg, sp] = await Promise.all([
       e.DB.prepare(
         SESSION_SELECT + " AND s.session_date>=? AND s.session_date<=? ORDER BY s.session_date DESC,s.created_at DESC"
       )
@@ -3010,6 +3010,13 @@ async function api(r, e, p, ctx = null) {
       )
         .bind(u.id, u.id, from, to)
         .all(),
+      // Séances ajoutées depuis une invitation (même identifiant que l'invitation) : l'auteur et les autres
+      // partenaires tagués sur la séance d'origine (sauf refus), pour savoir avec qui on s'est entraîné.
+      e.DB.prepare(
+        "SELECT s.id AS session_id,fu.first_name,fu.last_name FROM training_sessions s JOIN session_tags t ON t.id=s.id AND t.to_user_id=s.user_id JOIN users fu ON fu.id=t.from_user_id WHERE s.user_id=? AND s.session_date>=? AND s.session_date<=? UNION ALL SELECT s.id,ou.first_name,ou.last_name FROM training_sessions s JOIN session_tags t ON t.id=s.id AND t.to_user_id=s.user_id JOIN session_tags o ON o.session_id=t.session_id AND o.id<>t.id AND o.status<>'declined' JOIN users ou ON ou.id=o.to_user_id WHERE s.user_id=? AND s.session_date>=? AND s.session_date<=?"
+      )
+        .bind(u.id, from, to, u.id, from, to)
+        .all(),
     ]);
     return json({
       sessions: s.results,
@@ -3020,6 +3027,7 @@ async function api(r, e, p, ctx = null) {
       boxWods: bw,
       dailyWods: dw.results.map(dailyWodOut),
       tags: tg.results,
+      sharedPartners: sp.results,
     });
   }
   if (r.method === "GET" && p === "/api/sessions") {

@@ -16,6 +16,7 @@ async function load() {
       api("/session-tags"),
     ]);
     sessionTags = w.tags || [];
+    sharedPartners = w.sharedPartners || [];
     pendingTags = tg.tags || [];
     activities = a.activities;
     movementCatalog = mc.movements;
@@ -54,6 +55,7 @@ async function loadSessions() {
     [w, tg] = await Promise.all([api("/week-data?from=" + from + "&to=" + to), api("/session-tags")]);
   sessions = w.sessions;
   sessionTags = w.tags || [];
+  sharedPartners = w.sharedPartners || [];
   pendingTags = tg.tags || [];
   movementChecks = w.checks;
   catalogChecks = w.catalogChecks || [];
@@ -155,19 +157,19 @@ function openSessionDetail(id) {
         .map(c => movementCatalog.find(m => m.id === c.catalog_movement_id)?.name),
     ].filter(Boolean),
     hasScore = s.score_value !== null && s.score_value !== undefined && s.score_type,
-    partners = sessionTags
-      .filter(t => t.session_id === s.id)
-      .map(t => partnerName(t) + (t.status === "accepted" ? "" : " (" + PARTNER_STATUS[t.status] + ")")),
+    // Avec qui on s’est entraîné : l’auteur et les autres partenaires (séance partagée), puis ceux qu’on a tagués.
+    partners = [
+      ...sharedPartners.filter(x => x.session_id === s.id).map(partnerName),
+      ...sessionTags
+        .filter(t => t.session_id === s.id)
+        .map(t => partnerName(t) + (t.status === "accepted" ? "" : " (" + PARTNER_STATUS[t.status] + ")")),
+    ],
     part = (label, text) => `<p><b>${label}</b> ${esc(text)}</p>`;
   $("#sessiondetailtitle").textContent = s.wod_name;
   $("#sessiondetailmeta").textContent = [
     fmt(s.session_date),
     sessionSource(s),
     s.program_name && !s.box_name && !s.daily_wod_id ? s.program_name : "",
-    // Séance ajoutée depuis une invitation : l’auteur est rappelé dans le détail (pas dans la liste).
-    s.shared_from_first_name
-      ? "partagée par " + s.shared_from_first_name + " " + String(s.shared_from_last_name || "").slice(0, 1) + "."
-      : "",
   ]
     .filter(Boolean)
     .join(" · ");

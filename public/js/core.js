@@ -28,6 +28,7 @@ let tab = "login",
   weeklyWodPrograms = [],
   boxWods = [],
   sessionTags = [], // partenaires tagués sur mes séances de la semaine
+  sharedPartners = [], // séances ajoutées depuis une invitation : l’auteur et les autres partenaires
   pendingTags = []; // séances où je suis tagué, en attente de ma réponse
 const today = () => {
   const d = new Date();

@@ -90,8 +90,6 @@ document.querySelectorAll(".navtab[data-view]").forEach(b => (b.onclick = () => 
 // Origine du WOD d’une séance, affichée dans l’historique : nom de la box, WOD du jour, programmation, ou séance libre
 // (« Autres »).
 function sessionSource(s) {
-  if (s.shared_from_first_name)
-    return "Partagée par " + s.shared_from_first_name + " " + String(s.shared_from_last_name || "").slice(0, 1) + ".";
   if (s.box_wod_id) return s.box_name || "WOD de la box";
   if (s.daily_wod_id) return "WOD du jour";
   if (s.wod_name === "Autres") return "Séance libre";
@@ -166,6 +164,10 @@ function openSessionDetail(id) {
     fmt(s.session_date),
     sessionSource(s),
     s.program_name && !s.box_name && !s.daily_wod_id ? s.program_name : "",
+    // Séance ajoutée depuis une invitation : l’auteur est rappelé dans le détail (pas dans la liste).
+    s.shared_from_first_name
+      ? "partagée par " + s.shared_from_first_name + " " + String(s.shared_from_last_name || "").slice(0, 1) + "."
+      : "",
   ]
     .filter(Boolean)
     .join(" · ");

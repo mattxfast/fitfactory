@@ -903,8 +903,17 @@
           </div>
           <fieldset class="meal-items">
             <legend>Aliments et quantités</legend>
+            <div id="mealscanned" class="meal-scanned"></div>
             <div id="mealitems"></div>
-            <button type="button" class="smallbtn" id="addmealitem">＋ Ajouter un aliment</button>
+            <div class="meal-item-actions">
+              <button type="button" class="smallbtn" id="addmealitem">＋ Ajouter un aliment</button
+              ><button type="button" class="smallbtn" id="scanmealitem">
+                <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M4 8V5h3M17 5h3v3M20 16v3h-3M7 19H4v-3M8 8v8M11 8v8M14 8v8M17 8v8" />
+                </svg>
+                Scanner un produit
+              </button>
+            </div>
           </fieldset>
           <label
             >Précision (facultatif)<input
@@ -918,6 +927,42 @@
           <div id="mealresult" class="meal-result" hidden></div>
           <button class="primary" id="mealsave" hidden>Enregistrer le repas</button>
           <div class="error" id="mealerror"></div>
+        </form>
+      </dialog>
+
+      <dialog id="scandialog" class="modal">
+        <form id="scanform" method="dialog">
+          <div class="sectionhead">
+            <h2>Scanner un produit</h2>
+            <button type="button" class="iconbtn" id="closescan">×</button>
+          </div>
+          <div id="scancamera" class="scan-camera" hidden>
+            <video playsinline muted></video>
+            <div class="scan-frame" aria-hidden="true"></div>
+          </div>
+          <p class="hint" id="scanstatus" role="status"></p>
+          <div class="scan-manual">
+            <label
+              >Code-barres<input
+                name="barcode"
+                inputmode="numeric"
+                autocomplete="off"
+                maxlength="14"
+                placeholder="Ex. : 3017620422003"
+            /></label>
+            <button type="button" class="smallbtn" id="scanlookup">Chercher</button>
+          </div>
+          <div id="scanproduct" class="scan-product" hidden>
+            <div id="scanproductinfo"></div>
+            <div class="meal-when">
+              <label>Unité<select name="unit"></select></label>
+              <label>Quantité<input name="amount" type="number" min="0" step="any" inputmode="decimal" /></label>
+            </div>
+            <p class="meal-result-total" id="scanpreview"></p>
+          </div>
+          <button class="primary" id="scanadd" hidden>Ajouter au repas</button>
+          <div class="error" id="scanerror"></div>
+          <p class="hint" id="scancredit"></p>
         </form>
       </dialog>
 
@@ -1362,6 +1407,7 @@
     <script src="/js/boxes.js"></script>
     <script src="/js/prs.js"></script>
     <script src="/js/nutrition.js"></script>
+    <script src="/js/scan.js"></script>
     <script src="/js/timer.js"></script>
     <script src="/js/daily-wod.js"></script>
     <script src="/js/benchmarks.js"></script>

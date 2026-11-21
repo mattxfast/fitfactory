@@ -123,6 +123,12 @@
   --macro-protein: #2f7ed8; /* protéines */
   --macro-carbs: #f5b800; /* glucides */
   --macro-fat: #e0673a; /* lipides */
+  /* Pastilles Nutri-Score (A à E) et NOVA (1 à 4) des produits scannés : couleurs officielles, sur tous les thèmes */
+  --score-a: #038141;
+  --score-b: #85bb2f;
+  --score-c: #fecb02;
+  --score-d: #ee8100;
+  --score-e: #e63e11;
   /* Ombres et voile */
   --shadow: 0 8px 24px #1414140d; /* ombre des cartes */
   --shadow-color: #14141414; /* ombre de la barre d’onglets */
@@ -5249,6 +5255,128 @@ button:active:not(:disabled) {
   gap: 6px;
   align-items: center;
   margin-bottom: 6px;
+}
+.meal-item-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.meal-item-actions .btn-icon {
+  vertical-align: -3px;
+  margin-right: 4px;
+}
+.meal-scanned-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 0;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--line);
+}
+.meal-scanned-row small {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+.nutriscore,
+.nova {
+  display: inline-block;
+  margin: 2px 0 2px 6px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.5;
+  white-space: nowrap;
+  vertical-align: 1px;
+  color: #fff;
+}
+.nutriscore-a,
+.nova-1 {
+  background: var(--score-a);
+}
+.nutriscore-b {
+  background: var(--score-b);
+}
+.nutriscore-c,
+.nova-2 {
+  background: var(--score-c);
+  color: #111;
+}
+.nutriscore-d,
+.nova-3 {
+  background: var(--score-d);
+}
+.nutriscore-e,
+.nova-4 {
+  background: var(--score-e);
+}
+.food-badges .nutriscore:first-child,
+.food-badges .nova:first-child,
+.nutrition-nova .nova {
+  margin-left: 0;
+}
+.nutrition-nova {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 10px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+}
+.nutrition-nova small {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+}
+.scan-camera {
+  position: relative;
+  margin-bottom: 8px;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #000;
+  aspect-ratio: 4 / 3;
+}
+.scan-camera video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.scan-frame {
+  position: absolute;
+  inset: 32% 10%;
+  border: 3px solid var(--banner-bg);
+  border-radius: 10px;
+  box-shadow: 0 0 0 999px #0006;
+}
+.scan-manual {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: end;
+  gap: 8px;
+}
+.scan-manual .smallbtn {
+  margin-bottom: 2px;
+}
+.scan-product {
+  margin: 12px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--content-border);
+  border-radius: 10px;
+  background: var(--content-bg);
+}
+.scan-product small {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+.scan-product .meal-extra {
+  margin: 6px 0;
+  font-size: 12px;
+  color: var(--muted-strong);
 }
 .meal-result {
   margin: 12px 0;

@@ -1,5 +1,6 @@
-// FitFactory — suivi de l’alimentation : bilan du jour (calories, macronutriments, fibres…), repas détaillés, 7 derniers
-// jours, saisie d’un repas (photo et/ou aliments avec quantité) analysée par l’IA.
+// FitFactory — suivi de l’alimentation : bilan du jour (calories, macronutriments, fibres…, part des produits
+// ultra-transformés), repas détaillés, 7 derniers jours, saisie d’un repas : produits scannés (valeurs de l’étiquette,
+// Open Food Facts, voir scan.js) et/ou photo et aliments avec quantité, analysés par l’IA.
 // Scripts classiques chargés dans l’ordre par index.html (portée globale partagée) ; boot.js démarre l’application en dernier.
 // L’analyse demande le réseau (jamais en file d’attente) ; la photo, réduite sur le téléphone, n’est pas conservée.
 // L’enregistrement d’un repas déjà analysé fonctionne hors ligne (client_id).
@@ -11,8 +12,9 @@ const MEAL_TIMEOUT = 100000,
 let nutritionDay = null,
   meals = [],
   mealExpanded = new Set(),
-  // Repas en cours de saisie : identifiant (modification), photo réduite, dernière analyse, analyse périmée ?
-  mealDraft = {id: null, photo: "", analysis: null, stale: false},
+  // Repas en cours de saisie : identifiant (modification), photo réduite, produits scannés, dernière analyse de l’IA
+  // (photo et aliments saisis seulement), analyse périmée ?
+  mealDraft = {id: null, photo: "", scanned: [], analysis: null, stale: false},
   mealAnalyzing = false;
 
 const kcalText = v => Math.round(Number(v) || 0).toLocaleString("fr-FR");
@@ -53,21 +55,28 @@ function macroShares(t) {
     sum = p + c + f;
   return sum ? {protein: (p / sum) * 100, carbs: (c / sum) * 100, fat: (f / sum) * 100} : null;
 }
-function nutritionSummary(t) {
+// Part des calories du jour venant de produits ultra-transformés (NOVA 4), connue seulement pour les produits scannés.
+function novaLine(dayMeals, t) {
+  const items = dayMeals.flatMap(m => m.items || []).filter(x => x.nova);
+  if (!items.length || !t.kcal) return "";
+  const share = (items.filter(x => x.nova === 4).reduce((s, x) => s + (Number(x.kcal) || 0), 0) / t.kcal) * 100;
+  return `<p class="nutrition-nova"><span class="nova nova-4">NOVA 4</span><span>Ultra-transformés : <b>${Math.round(share)} %</b> des calories du jour<small>calculé sur les produits scannés</small></span></p>`;
+}
+function nutritionSummary(t, dayMeals) {
   const shares = macroShares(t),
     macro = (key, label, cls) =>
       `<div class="nutrition-macro ${cls}"><strong>${gramText(t[key])}</strong><span>${label}${shares ? " · " + Math.round(shares[cls]) + " %" : ""}</span></div>`;
-  return `<div class="nutrition-summary card"><div class="nutrition-energy"><div><strong>${kcalText(t.kcal)}</strong><span>kcal</span></div><button id="addmeal" class="primary addsession-compact" aria-label="Ajouter un repas" title="Ajouter un repas">＋</button></div><div class="nutrition-bar" aria-hidden="true">${shares ? `<span class="protein" style="width:${shares.protein}%"></span><span class="carbs" style="width:${shares.carbs}%"></span><span class="fat" style="width:${shares.fat}%"></span>` : ""}</div><div class="nutrition-macros">${macro("protein_g", "Protéines", "protein")}${macro("carbs_g", "Glucides", "carbs")}${macro("fat_g", "Lipides", "fat")}</div><dl class="nutrition-extra"><div><dt>Fibres</dt><dd>${gramText(t.fiber_g)}</dd></div><div><dt>dont sucres</dt><dd>${gramText(t.sugars_g)}</dd></div><div><dt>dont AG saturés</dt><dd>${gramText(t.sat_fat_g)}</dd></div><div><dt>Sel</dt><dd>${gramText(t.salt_g)}</dd></div></dl></div>`;
+  return `<div class="nutrition-summary card"><div class="nutrition-energy"><div><strong>${kcalText(t.kcal)}</strong><span>kcal</span></div><button id="addmeal" class="primary addsession-compact" aria-label="Ajouter un repas" title="Ajouter un repas">＋</button></div><div class="nutrition-bar" aria-hidden="true">${shares ? `<span class="protein" style="width:${shares.protein}%"></span><span class="carbs" style="width:${shares.carbs}%"></span><span class="fat" style="width:${shares.fat}%"></span>` : ""}</div><div class="nutrition-macros">${macro("protein_g", "Protéines", "protein")}${macro("carbs_g", "Glucides", "carbs")}${macro("fat_g", "Lipides", "fat")}</div><dl class="nutrition-extra"><div><dt>Fibres</dt><dd>${gramText(t.fiber_g)}</dd></div><div><dt>dont sucres</dt><dd>${gramText(t.sugars_g)}</dd></div><div><dt>dont AG saturés</dt><dd>${gramText(t.sat_fat_g)}</dd></div><div><dt>Sel</dt><dd>${gramText(t.salt_g)}</dd></div></dl>${novaLine(dayMeals, t)}</div>`;
 }
 // Détail d’un repas : valeurs par aliment, puis fibres, sucres, AG saturés et sel du repas.
 function mealDetail(m) {
   const rows = (m.items || [])
     .map(
       x =>
-        `<tr><th scope="row">${esc(x.name)}${x.quantity || x.grams ? `<small>${esc(x.quantity || "")}${x.grams && x.quantity !== x.grams + " g" ? (x.quantity ? " · " : "") + "≈ " + gramText(x.grams) : ""}</small>` : ""}</th><td>${kcalText(x.kcal)}</td><td>${gramText(x.protein_g)}</td><td>${gramText(x.carbs_g)}</td><td>${gramText(x.fat_g)}</td></tr>`
+        `<tr><th scope="row">${esc(x.name)}${foodBadges(x)}${x.quantity || x.grams ? `<small>${esc(x.quantity || "")}${x.grams && x.source !== "off" && x.quantity !== x.grams + " g" ? (x.quantity ? " · " : "") + "≈ " + gramText(x.grams) : ""}</small>` : ""}</th><td>${kcalText(x.kcal)}</td><td>${gramText(x.protein_g)}</td><td>${gramText(x.carbs_g)}</td><td>${gramText(x.fat_g)}</td></tr>`
     )
     .join("");
-  return `<div class="meal-detail"><table class="meal-table"><thead><tr><th scope="col">Aliment</th><th scope="col">kcal</th><th scope="col">Prot.</th><th scope="col">Gluc.</th><th scope="col">Lip.</th></tr></thead><tbody>${rows}</tbody></table><p class="meal-extra">Fibres ${gramText(m.fiber_g)} · sucres ${gramText(m.sugars_g)} · AG saturés ${gramText(m.sat_fat_g)} · sel ${gramText(m.salt_g)}</p>${m.remarks ? `<p class="meal-remarks">${esc(m.remarks)}</p>` : ""}${m.note ? `<p class="meal-extra"><b>Précision :</b> ${esc(m.note)}</p>` : ""}${MEAL_CONFIDENCE[m.confidence] ? `<p class="hint">${MEAL_CONFIDENCE[m.confidence]} (calculée par l’IA).</p>` : ""}</div>`;
+  return `<div class="meal-detail"><table class="meal-table"><thead><tr><th scope="col">Aliment</th><th scope="col">kcal</th><th scope="col">Prot.</th><th scope="col">Gluc.</th><th scope="col">Lip.</th></tr></thead><tbody>${rows}</tbody></table><p class="meal-extra">Fibres ${gramText(m.fiber_g)} · sucres ${gramText(m.sugars_g)} · AG saturés ${gramText(m.sat_fat_g)} · sel ${gramText(m.salt_g)}</p>${m.remarks ? `<p class="meal-remarks">${esc(m.remarks)}</p>` : ""}${m.note ? `<p class="meal-extra"><b>Précision :</b> ${esc(m.note)}</p>` : ""}${MEAL_CONFIDENCE[m.confidence] ? `<p class="hint">${MEAL_CONFIDENCE[m.confidence]} (calculée par l’IA).</p>` : ""}${(m.items || []).some(x => x.source === "off") ? `<p class="hint">${OFF_CREDIT}</p>` : ""}</div>`;
 }
 function renderNutrition() {
   const now = today(),
@@ -92,7 +101,7 @@ function renderNutrition() {
       })
       .join("");
   $("#nutritionboard").innerHTML =
-    `${nav}${nutritionSummary(sumNutrients(dayMeals))}<div class="weekheading"><h2>Repas</h2><span>${dayMeals.length}</span></div><div class="entries">${list}</div><div class="weekheading"><h2>7 derniers jours</h2></div><div class="nutrition-history card">${history}</div>`;
+    `${nav}${nutritionSummary(sumNutrients(dayMeals), dayMeals)}<div class="weekheading"><h2>Repas</h2><span>${dayMeals.length}</span></div><div class="entries">${list}</div><div class="weekheading"><h2>7 derniers jours</h2></div><div class="nutrition-history card">${history}</div>`;
   $("#prevday").onclick = () => changeNutritionDay(addDays(day, -1));
   $("#nextday").onclick = () => changeNutritionDay(addDays(day, 1));
   $("#nutritiontoday").onclick = () => changeNutritionDay(now);
@@ -140,47 +149,62 @@ function mealItemsInput() {
     .map(r => ({name: r.children[0].value.trim(), quantity: r.children[1].value.trim()}))
     .filter(x => x.name);
 }
+// Produits scannés du repas : valeurs de l’étiquette, sans analyse.
+function renderMealScanned() {
+  $("#mealscanned").innerHTML = mealDraft.scanned
+    .map(
+      (x, i) =>
+        `<div class="meal-scanned-row"><div><b>${esc(x.name)}</b>${foodBadges(x)}<small>${esc(x.quantity)} · ${kcalText(x.kcal)} kcal</small></div><button type="button" class="smallbtn delete" data-remove-scanned="${i}" aria-label="Retirer ce produit" title="Retirer">×</button></div>`
+    )
+    .join("");
+}
 function renderMealPhoto() {
   $("#mealphoto").hidden = !mealDraft.photo;
   $("#mealphoto img").src = mealDraft.photo || "";
 }
-// Résultat de l’analyse (ou valeurs du repas modifié) ; une saisie modifiée depuis rend l’analyse périmée.
+// Photo ou aliments saisis : à analyser par l’IA (les produits scannés n’en ont pas besoin).
+const mealHasFreeInput = () => !!mealDraft.photo || mealItemsInput().length > 0;
+const mealAiItems = () => (mealDraft.analysis && !mealDraft.stale ? mealDraft.analysis.items : []);
+const mealNeedsAnalysis = () => mealHasFreeInput() && (!mealDraft.analysis || mealDraft.stale);
+// Résultat : produits scannés et aliments analysés (ou valeurs du repas modifié) ; une saisie modifiée depuis
+// l’analyse la rend périmée.
 function renderMealResult() {
-  const a = mealDraft.analysis;
-  $("#mealresult").hidden = !a;
-  $("#mealsave").hidden = !a || mealDraft.stale;
+  const a = mealDraft.analysis,
+    items = [...mealDraft.scanned, ...mealAiItems()],
+    totals = sumNutrients(items);
+  $("#mealresult").hidden = !items.length && !a;
+  $("#mealsave").hidden = mealNeedsAnalysis() || !items.length;
+  $("#mealanalyze").hidden = !mealHasFreeInput() && !a;
   $("#mealanalyze").textContent = a ? "Relancer l’analyse" : "Analyser avec l’IA";
-  if (!a) return;
-  $("#mealresult").classList.toggle("stale", mealDraft.stale);
+  if ($("#mealresult").hidden) return;
   $("#mealresult").innerHTML =
-    (mealDraft.stale
-      ? `<p class="error">Saisie modifiée : relance l’analyse avant d’enregistrer.</p>`
-      : `<p class="meal-result-total"><strong>${kcalText(a.totals.kcal)} kcal</strong> · P ${gramText(a.totals.protein_g)} · G ${gramText(a.totals.carbs_g)} · L ${gramText(a.totals.fat_g)}</p>`) +
-    (a.items.length
-      ? mealDetail({...a.totals, items: a.items, remarks: a.remarks, confidence: a.confidence})
-      : `<p class="meal-remarks">${esc(a.remarks || "Aucun aliment reconnu.")}</p>`);
+    (mealDraft.stale ? `<p class="error">Saisie modifiée : relance l’analyse avant d’enregistrer.</p>` : "") +
+    (items.length
+      ? `<p class="meal-result-total"><strong>${kcalText(totals.kcal)} kcal</strong> · P ${gramText(totals.protein_g)} · G ${gramText(totals.carbs_g)} · L ${gramText(totals.fat_g)}</p>` +
+        mealDetail({
+          ...totals,
+          items,
+          remarks: mealAiItems().length || !a?.items.length ? a?.remarks : "",
+          confidence: mealAiItems().length ? a.confidence : "",
+        })
+      : `<p class="meal-remarks">${esc(a?.remarks || "Aucun aliment reconnu.")}</p>`);
 }
-function markMealStale() {
-  if (mealDraft.analysis && !mealDraft.stale) {
-    mealDraft.stale = true;
-    renderMealResult();
-  }
+function mealInputChanged() {
+  if (mealDraft.analysis) mealDraft.stale = true;
+  renderMealResult();
 }
 function openMeal(meal) {
   const form = $("#mealform"),
-    f = form.elements;
+    f = form.elements,
+    scanned = (meal?.items || []).filter(x => x.source === "off"),
+    others = (meal?.items || []).filter(x => x.source !== "off");
   form.reset();
   mealDraft = {
     id: meal?.id || null,
     photo: "",
-    analysis: meal
-      ? {
-          title: meal.title,
-          items: meal.items || [],
-          totals: sumNutrients([meal]),
-          confidence: meal.confidence,
-          remarks: meal.remarks,
-        }
+    scanned,
+    analysis: others.length
+      ? {title: meal.title, items: others, confidence: meal.confidence, remarks: meal.remarks}
       : null,
     stale: false,
   };
@@ -190,22 +214,31 @@ function openMeal(meal) {
   f.meal_time.value = meal?.meal_time || (f.meal_date.value === today() ? nowTime() : "12:00");
   f.title.value = meal?.title || "";
   f.note.value = meal?.note || "";
-  renderMealItems((meal?.items || []).map(x => ({name: x.name, quantity: x.quantity})));
+  renderMealItems(others.map(x => ({name: x.name, quantity: x.quantity})));
+  renderMealScanned();
   renderMealPhoto();
   renderMealResult();
   $("#mealerror").textContent = "";
   $("#mealprogress").hidden = true;
   $("#mealanalyze").disabled = false;
   $("#mealdialog").showModal();
-  // Analyse indisponible sans clé OpenAI : on l’indique tout de suite (un repas existant reste modifiable).
+  // Analyse indisponible sans clé OpenAI : on l’indique tout de suite (les produits scannés restent possibles).
   sendApi("/meal-analysis", "GET")
     .then(d => {
       if (d.enabled) return;
       $("#mealerror").textContent =
-        "L’analyse par IA n’est pas encore activée : l’administrateur doit configurer la clé OpenAI.";
+        "L’analyse par IA n’est pas encore activée (clé OpenAI manquante) : seuls les produits scannés sont comptés.";
       $("#mealanalyze").disabled = true;
     })
     .catch(() => {});
+}
+// Produit scanné ajouté depuis la fenêtre de scan (scan.js).
+function addScannedItem(item) {
+  mealDraft.scanned.push(item);
+  // L’IA a été prévenue des produits déjà comptés : un nouveau produit rend son analyse périmée.
+  if (mealDraft.analysis && mealHasFreeInput()) mealDraft.stale = true;
+  renderMealScanned();
+  renderMealResult();
 }
 // Photo réduite sur le téléphone (1024 px au plus, JPEG) avant l’envoi à l’analyse.
 async function shrinkPhoto(file) {
@@ -234,37 +267,45 @@ $("#mealform").elements.photo.onchange = async e => {
   $("#mealerror").textContent = "";
   try {
     mealDraft.photo = await shrinkPhoto(file);
-    markMealStale();
   } catch (x) {
     $("#mealerror").textContent = x.message;
   }
   renderMealPhoto();
+  mealInputChanged();
 };
 $("#mealphotoremove").onclick = () => {
   mealDraft.photo = "";
-  markMealStale();
   renderMealPhoto();
+  mealInputChanged();
 };
 $("#addmealitem").onclick = () => {
   $("#mealitems").insertAdjacentHTML("beforeend", mealItemRow());
   $("#mealitems").lastElementChild.children[0].focus();
 };
+$("#scanmealitem").onclick = () => openScan();
 $("#mealitems").onclick = e => {
   const button = e.target.closest("[data-remove-item]");
   if (!button) return;
   button.parentElement.remove();
   if (!$("#mealitems").children.length) renderMealItems([]);
-  markMealStale();
+  mealInputChanged();
 };
-$("#mealitems").oninput = markMealStale;
-$("#mealform").elements.note.oninput = markMealStale;
+$("#mealscanned").onclick = e => {
+  const button = e.target.closest("[data-remove-scanned]");
+  if (!button) return;
+  mealDraft.scanned.splice(Number(button.dataset.removeScanned), 1);
+  renderMealScanned();
+  renderMealResult();
+};
+$("#mealitems").oninput = mealInputChanged;
+$("#mealform").elements.note.oninput = mealInputChanged;
 $("#mealanalyze").onclick = async () => {
   if (mealAnalyzing) return;
   const f = $("#mealform").elements,
     items = mealItemsInput();
   $("#mealerror").textContent = "";
   if (!mealDraft.photo && !items.length) {
-    $("#mealerror").textContent = "Ajoute une photo ou au moins un aliment.";
+    $("#mealerror").textContent = "Ajoute une photo ou au moins un aliment à analyser.";
     return;
   }
   if (!navigator.onLine) {
@@ -282,7 +323,12 @@ $("#mealanalyze").onclick = async () => {
     const d = await sendApi(
       "/meal-analysis",
       "POST",
-      {photo: mealDraft.photo || null, items, note: f.note.value.trim()},
+      {
+        photo: mealDraft.photo || null,
+        items,
+        note: f.note.value.trim(),
+        known: mealDraft.scanned.map(x => ({name: x.name, quantity: x.quantity})),
+      },
       MEAL_TIMEOUT
     );
     mealDraft.analysis = d.analysis;
@@ -305,22 +351,24 @@ $("#mealanalyze").onclick = async () => {
 $("#mealform").onsubmit = async e => {
   e.preventDefault();
   const f = e.target.elements,
-    a = mealDraft.analysis;
-  if (!a || mealDraft.stale) return;
-  if (!a.items.length) {
-    $("#mealerror").textContent = "Aucun aliment reconnu : complète la saisie et relance l’analyse.";
+    a = mealDraft.analysis,
+    aiItems = mealAiItems(),
+    items = [...mealDraft.scanned, ...aiItems];
+  if (mealNeedsAnalysis()) return;
+  if (!items.length) {
+    $("#mealerror").textContent = "Aucun aliment : scanne un produit ou complète la saisie et lance l’analyse.";
     return;
   }
   const body = {
     meal_date: f.meal_date.value,
     meal_time: f.meal_time.value,
-    title: f.title.value.trim() || a.title,
+    title: f.title.value.trim() || (aiItems.length && a.title) || mealDraft.scanned[0]?.name || "Repas",
     note: f.note.value.trim(),
-    items: a.items,
-    confidence: a.confidence,
-    remarks: a.remarks,
+    items,
+    confidence: aiItems.length ? a.confidence : "",
+    remarks: aiItems.length ? a.remarks : "",
     // Totaux : recalculés par le serveur ; envoyés pour l’affichage immédiat hors ligne.
-    ...sumNutrients(a.items),
+    ...sumNutrients(items),
   };
   try {
     if (mealDraft.id) await api("/meals/" + mealDraft.id, {method: "PUT", body: JSON.stringify(body)});

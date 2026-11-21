@@ -1,0 +1,6 @@
+zxing-wasm 3.1.7 (https://github.com/Sec-ant/zxing-wasm), fichiers dist/iife/reader/index.js (renommé
+zxing-reader.js) et dist/reader/zxing_reader.wasm du paquet npm, sans modification.
+- Code de zxing-wasm : licence MIT (voir LICENSE).
+- zxing-cpp (https://github.com/zxing-cpp/zxing-cpp), compilé dans le fichier .wasm : licence Apache-2.0.
+Utilisé par public/js/scan.js pour lire les codes-barres EAN/UPC quand le navigateur n'a pas BarcodeDetector.
+Le .wasm doit correspondre exactement à la version du script : les mettre à jour ensemble.

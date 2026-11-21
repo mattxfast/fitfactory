@@ -1,7 +1,7 @@
 // Génération de WOD par IA (API OpenAI, sans dépendance) : options de séance, prompt modèle, appel et mise en texte.
 // Le Worker (src/worker.js) lit le contexte en base (profil, records, programme, séances) et enregistre le résultat.
 
-export const AI_PROMPT_VERSION = "wod-seance-v3";
+export const AI_PROMPT_VERSION = "wod-seance-v4";
 export const AI_DAILY_LIMIT = 100; // générations par utilisateur et par 24 h (maîtrise du coût)
 export const AI_DEFAULT_MODEL = "gpt-5-mini";
 export const AI_LEVELS = {
@@ -75,6 +75,7 @@ Règles :
 - Les blocs technique et force comportent de 1 à 5 mouvements. Si des mouvements sont imposés, utilise exactement ceux-là ; sinon choisis-en 1 à 3 selon la durée disponible.
 - Choisis toi-même le format du metcon (AMRAP, EMOM, For Time, intervalles, chipper…) en variant par rapport à la programmation récente.
 - Utilise de préférence les noms de mouvements du catalogue fourni, à l'identique.
+- Intègre dans la séance tous les « mouvements à travailler dans ce WOD », sous leur nom exact, dans le ou les blocs qui leur conviennent (sauf contrainte de l'athlète : alternative proposée).
 - Adapte mouvements et charges au niveau, aux records et au matériel disponible. Exprime les charges en kg (ou en % du 1RM quand un record est connu), les distances en mètres.
 - Respecte les contraintes de l'athlète ; propose une alternative pour tout mouvement qui ne convient pas.
 - Assure la progression et la variété avec le programme et les séances récentes : évite de solliciter lourdement le même groupe musculaire deux jours de suite.
@@ -107,6 +108,7 @@ export function buildPrompt(c) {
     `${c.program.name} — semaine ${c.weekIndex}/${c.weekCount} (du ${c.weekLabel})`,
     // La thématique / structure du WOD arrive par la consigne particulière (pré-remplie et modifiable dans la fenêtre).
     "WOD à écrire : " + c.wod.name,
+    "Mouvements à travailler dans ce WOD : " + (c.wod.movement_names || "aucun en particulier"),
     "Mouvements à travailler dans le programme : " + (c.focus.length ? c.focus.join(", ") : "aucun en particulier"),
     "",
     "## Programmation déjà écrite (semaines récentes et cette semaine)",

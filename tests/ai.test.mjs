@@ -149,3 +149,40 @@ test("IA : génération d'un WOD pour une semaine", async () => {
   assert.equal(data.wods[programId].find(w => w.id === wodId)?.is_tracked, 1, "le WOD devient suivi");
   assert.equal((await alice.get("/ai-profile")).data.remaining, 99);
 });
+
+test("WOD de programme : mouvements à travailler, repris par l'IA et acceptés dans la séance", async () => {
+  await admin.post("/admin/movements", {name: "Deadlift", measurement_method: "load"});
+  const catalog = (await alice.get("/movement-catalog")).data.movements,
+    deadliftId = catalog.find(m => m.name === "Deadlift").id,
+    activityId = (await alice.get("/activities")).data.activities[0].id,
+    body = extra => ({name: "WOD 1", activity_id: activityId, duration_minutes: 60, is_tracked: true, ...extra});
+  // enregistrés avec le WOD (identifiants inconnus ignorés), remplacés seulement si la liste est envoyée
+  assert.equal((await alice.put(`/wods/${wodId}`, body({catalog_movement_ids: [squatId, "inconnu"]}))).status, 200);
+  assert.equal((await bob.put(`/wods/${wodId}`, body({catalog_movement_ids: []}))).status, 404);
+  assert.equal((await alice.put(`/wods/${wodId}`, body())).status, 200);
+  const wodOf = async () => (await alice.get("/program-data")).data.wods[programId].find(w => w.id === wodId);
+  assert.deepEqual((await wodOf()).movement_ids, [squatId]);
+  // repris dans le prompt de génération
+  const res = await alice.post(`/wods/${wodId}/generate`, options());
+  assert.equal(res.status, 200, JSON.stringify(res.data));
+  assert.match(requests.at(-1).body.input, /Mouvements à travailler dans ce WOD : Back squat/);
+  // programme avec une liste « Focus mouvement » sans le squat : le squat du WOD est quand même accepté dans la
+  // séance, pas un autre mouvement du catalogue
+  assert.equal((await alice.post(`/programs/${programId}/movements`, {catalog_movement_id: deadliftId})).status, 200);
+  const session = await alice.post("/sessions", {
+    program_id: programId,
+    wod_id: wodId,
+    session_date: today(),
+    activity_id: activityId,
+    duration_minutes: 60,
+    actual_comment: "",
+    movement_ids: [],
+    catalog_movement_ids: [squatId, deadliftId],
+  });
+  assert.equal(session.status, 200, JSON.stringify(session.data));
+  const week = (await alice.get(`/week-data?from=${mondayOf(today())}&to=${addDays(mondayOf(today()), 6)}`)).data;
+  assert.deepEqual(
+    week.catalogChecks.filter(c => c.session_id === session.data.id).map(c => c.catalog_movement_id),
+    [squatId]
+  );
+});

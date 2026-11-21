@@ -509,6 +509,13 @@ async function ensureV2Schema(env) {
       if (!columns.results.some(column => column.name === "notified_at"))
         await env.DB.prepare("ALTER TABLE session_tags ADD COLUMN notified_at TEXT").run();
     });
+    await runMigration("v33-program-wod-movements", async () => {
+      // Mouvements à travailler d'un WOD de programme (catalogue) : repris par la génération IA et cochés par
+      // défaut dans la séance.
+      await env.DB.prepare(
+        "CREATE TABLE IF NOT EXISTS program_wod_movements (wod_id TEXT NOT NULL REFERENCES program_wods(id) ON DELETE CASCADE, catalog_movement_id TEXT NOT NULL REFERENCES movement_catalog(id) ON DELETE CASCADE, PRIMARY KEY(wod_id,catalog_movement_id))"
+      ).run();
+    });
   })().catch(err => {
     schemaReady = null;
     throw err;
@@ -961,6 +968,25 @@ async function boxWodMovementStatements(e, wodId, ids) {
     ),
   ];
 }
+// Mouvements à travailler d'un WOD de programme : remplacés en entier (identifiants du catalogue valides seulement).
+async function programWodMovementStatements(e, wodId, ids) {
+  const unique = [...new Set((Array.isArray(ids) ? ids : []).map(String).filter(Boolean))].slice(0, 50),
+    valid = unique.length
+      ? (
+          await e.DB.prepare("SELECT id FROM movement_catalog WHERE id IN (" + unique.map(() => "?").join(",") + ")")
+            .bind(...unique)
+            .all()
+        ).results.map(x => x.id)
+      : [];
+  return [
+    e.DB.prepare("DELETE FROM program_wod_movements WHERE wod_id=?").bind(wodId),
+    ...valid.map(id =>
+      e.DB.prepare("INSERT INTO program_wod_movements(wod_id,catalog_movement_id) VALUES(?,?)").bind(wodId, id)
+    ),
+  ];
+}
+const PROGRAM_WOD_MOVEMENTS =
+  "(SELECT group_concat(x.catalog_movement_id) FROM program_wod_movements x WHERE x.wod_id=w.id) AS movement_ids";
 // Liste des WOD avec leurs mouvements (identifiants du catalogue, séparés par des virgules en base).
 const WOD_MOVEMENTS =
   "(SELECT group_concat(x.catalog_movement_id) FROM box_wod_movements x WHERE x.box_wod_id=w.id) AS movement_ids";
@@ -1019,7 +1045,8 @@ async function movementCheckStatements(
   programId,
   ids = [],
   catalogIds = [],
-  anyMovement = false
+  anyMovement = false,
+  wodId = null
 ) {
   const uniqueIds = [...new Set(ids.map(String).filter(Boolean))];
   const validIds = [];
@@ -1039,6 +1066,19 @@ async function movementCheckStatements(
   const hasProgramMovements =
     !anyMovement &&
     (await env.DB.prepare("SELECT 1 FROM program_movements WHERE program_id=? LIMIT 1").bind(programId).first());
+  // Programme avec mouvements à travailler : seuls les mouvements du catalogue propres au WOD sont acceptés en plus.
+  const wodCatalogIds =
+    hasProgramMovements && wodId
+      ? new Set(
+          (
+            await env.DB.prepare("SELECT catalog_movement_id FROM program_wod_movements WHERE wod_id=?")
+              .bind(wodId)
+              .all()
+          ).results.map(x => x.catalog_movement_id)
+        )
+      : null;
+  if (wodCatalogIds?.size)
+    validCatalogIds.push(...[...new Set(catalogIds.map(String))].filter(id => wodCatalogIds.has(id)));
   if (!hasProgramMovements) {
     const uniqueCatalogIds = [...new Set(catalogIds.map(String).filter(Boolean))].slice(0, 200);
     for (let offset = 0; offset < uniqueCatalogIds.length; offset += 100) {
@@ -2303,7 +2343,9 @@ async function api(r, e, p, ctx = null) {
         .bind(u.id, u.id, u.id, ...accessIds)
         .all(),
       e.DB.prepare(
-        "SELECT w.*,EXISTS(SELECT 1 FROM training_sessions s WHERE s.wod_id=w.id) AS has_sessions FROM program_wods w JOIN programs p ON p.id=w.program_id WHERE " +
+        "SELECT w.*,EXISTS(SELECT 1 FROM training_sessions s WHERE s.wod_id=w.id) AS has_sessions," +
+          PROGRAM_WOD_MOVEMENTS +
+          " FROM program_wods w JOIN programs p ON p.id=w.program_id WHERE " +
           ACCESS +
           " AND (w.name<>'__AUTRES__' OR p.user_id=?) ORDER BY w.program_id,w.sort_order,w.created_at"
       )
@@ -2339,7 +2381,7 @@ async function api(r, e, p, ctx = null) {
         });
       }
     const programOfWod = new Map();
-    for (const row of w.results) {
+    for (const row of withMovementIds(w.results)) {
       (wods[row.program_id] ??= []).push(row);
       programOfWod.set(row.id, row.program_id);
     }
@@ -2607,11 +2649,13 @@ async function api(r, e, p, ctx = null) {
   m = p.match(/^\/api\/programs\/([\w-]+)\/wods$/);
   if (m && r.method === "GET") {
     const x = await e.DB.prepare(
-      "SELECT * FROM program_wods WHERE program_id=? AND user_id=? ORDER BY sort_order,created_at"
+      "SELECT w.*," +
+        PROGRAM_WOD_MOVEMENTS +
+        " FROM program_wods w WHERE w.program_id=? AND w.user_id=? ORDER BY w.sort_order,w.created_at"
     )
       .bind(m[1], u.id)
       .all();
-    return json({wods: x.results});
+    return json({wods: withMovementIds(x.results)});
   }
   if (m && r.method === "POST") {
     const b = await r.json(),
@@ -2641,6 +2685,8 @@ async function api(r, e, p, ctx = null) {
     } catch {
       return json({error: "Un WOD porte déjà ce nom dans ce programme."}, 409);
     }
+    if (Array.isArray(b.catalog_movement_ids))
+      await e.DB.batch(await programWodMovementStatements(e, id, b.catalog_movement_ids));
     return json({ok: true, id});
   }
   // Génération de WOD par IA : profil d'entraînement et génération du contenu d'un WOD pour une semaine.
@@ -2679,7 +2725,7 @@ async function api(r, e, p, ctx = null) {
       return json({error: "La semaine doit commencer un lundi."}, 400);
     // Uniquement ses propres programmes (pas un programme suivi, ni le programme technique « Hors programme »).
     const wod = await e.DB.prepare(
-      "SELECT w.id,w.name,w.planned_comment,w.program_id,p.name AS program_name,p.start_monday,p.end_monday FROM program_wods w JOIN programs p ON p.id=w.program_id WHERE w.id=? AND w.user_id=? AND p.user_id=? AND p.is_default=0 AND w.name<>'__AUTRES__'"
+      "SELECT w.id,w.name,w.planned_comment,w.program_id,p.name AS program_name,p.start_monday,p.end_monday,(SELECT group_concat(mc.name,', ') FROM program_wod_movements x JOIN movement_catalog mc ON mc.id=x.catalog_movement_id WHERE x.wod_id=w.id) AS movement_names FROM program_wods w JOIN programs p ON p.id=w.program_id WHERE w.id=? AND w.user_id=? AND p.user_id=? AND p.is_default=0 AND w.name<>'__AUTRES__'"
     )
       .bind(m[1], u.id, u.id)
       .first();
@@ -2905,6 +2951,9 @@ async function api(r, e, p, ctx = null) {
     } catch {
       return json({error: "Ce nom de WOD existe déjà dans le programme."}, 409);
     }
+    // Mouvements à travailler : remplacés seulement si la liste est envoyée (WOD vérifié ci-dessus : le sien).
+    if (Array.isArray(b.catalog_movement_ids))
+      await e.DB.batch(await programWodMovementStatements(e, m[1], b.catalog_movement_ids));
     return json({ok: true});
   }
   if (m && r.method === "DELETE") {
@@ -3122,7 +3171,8 @@ async function api(r, e, p, ctx = null) {
         pid,
         Array.isArray(b.movement_ids) ? b.movement_ids : [],
         Array.isArray(b.catalog_movement_ids) ? b.catalog_movement_ids : [],
-        isOther
+        isOther,
+        w.id
       );
     await e.DB.batch([
       e.DB.prepare(
@@ -3219,7 +3269,8 @@ async function api(r, e, p, ctx = null) {
       b.program_id,
       Array.isArray(b.movement_ids) ? b.movement_ids : [],
       Array.isArray(b.catalog_movement_ids) ? b.catalog_movement_ids : [],
-      isOther
+      isOther,
+      w.id
     );
     const tagIds = sessionTagIds(b, u.id);
     await e.DB.batch([

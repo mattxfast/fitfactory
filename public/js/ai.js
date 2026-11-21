@@ -67,10 +67,14 @@ async function openAiDialog(mode, pid, wodId = null, week = null, origin = mode 
       plural +
       "). Les WOD manquants sont créés (« WOD 1 », « WOD 2 »…).";
     f.per_week.value = Math.min(7, Math.max(1, visibleWods(pid).length || 3));
-    $("#aiintro").textContent += " La thématique / structure de chaque WOD est ajoutée à sa consigne.";
+    $("#aiintro").textContent +=
+      " La thématique / structure de chaque WOD est ajoutée à sa consigne, et ses mouvements à travailler sont repris.";
   } else {
     // La thématique / structure du WOD est reprise dans la consigne particulière (modifiable avant de générer).
     f.instructions.value = wodTheme(w);
+    // Mouvements à travailler du WOD : transmis à l’IA par le serveur, rappelés ici.
+    const names = movementCatalog.filter(m => (w?.movement_ids || []).includes(m.id)).map(m => m.name);
+    if (names.length) $("#aiintro").textContent += " Mouvements à travailler : " + names.join(", ") + ".";
     $("#aititle").textContent = "Générer « " + (w?.name || "WOD") + " »";
     $("#aiintro").textContent =
       mode === "wod"

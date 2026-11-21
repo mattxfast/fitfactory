@@ -575,9 +575,25 @@ function openWod(pid, w = null) {
   f.elements.is_tracked.checked = !!w?.is_tracked;
   fillActivitySelect(f.elements.activity_id, w?.activity_id || defaultActivity()?.id);
   f.elements.duration_minutes.value = w?.duration_minutes || defaultActivity()?.duration_minutes || 60;
+  // Mouvements à travailler (catalogue) : repris par la génération IA et cochés par défaut dans la séance.
+  const ticked = new Set(w?.movement_ids || []);
+  $("#wodmovements").innerHTML =
+    movementCatalog
+      .map(
+        m =>
+          `<label class="movement-check"><input type="checkbox" name="catalog_movement_ids" value="${esc(m.id)}" ${ticked.has(m.id) ? "checked" : ""}><span>${esc(m.name)}</span></label>`
+      )
+      .join("") || `<p class="muted">Le catalogue de mouvements est vide.</p>`;
+  $("#wodmovementdetails").open = false;
+  syncWodMovementCount();
   $("#wodtitle").textContent = w ? "Modifier le WOD" : "Ajouter un WOD au programme";
   $("#woddialog").showModal();
 }
+function syncWodMovementCount() {
+  const n = $("#wodmovements").querySelectorAll("input:checked").length;
+  $("#wodmovementcount").textContent = n ? n + (n > 1 ? " cochés" : " coché") : "aucun coché";
+}
+$("#wodmovements").onchange = syncWodMovementCount;
 $("#closewod").onclick = () => $("#woddialog").close();
 $("#wodform").onsubmit = async e => {
   e.preventDefault();
@@ -589,6 +605,7 @@ $("#wodform").onsubmit = async e => {
       activity_id: f.get("activity_id"),
       duration_minutes: Number(f.get("duration_minutes")),
       is_tracked: $("#wodform").elements.is_tracked.checked,
+      catalog_movement_ids: [...$("#wodmovements").querySelectorAll("input:checked")].map(i => i.value),
     };
   try {
     await api(id ? "/wods/" + id : "/programs/" + f.get("program_id") + "/wods", {

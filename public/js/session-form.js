@@ -95,6 +95,26 @@ function syncSessionWod(session = null) {
     box.querySelectorAll('input[name="catalog_movement_ids"]').forEach(i => (i.checked = preset.has(i.value)));
     box.dataset.presetWod = "daily:" + dailyWod.id;
   }
+  // Nouvelle séance sur un WOD de la programmation : ses mouvements à travailler sont cochés par défaut, une seule fois
+  // par WOD choisi (dans la liste du programme, ou ajoutés en fin de liste).
+  const programWod = (wodsByProgram[f.elements.program_id.value] || []).find(w => w.id === f.elements.wod_id.value);
+  if (
+    !boxWod &&
+    !dailyWod &&
+    programWod?.movement_ids?.length &&
+    !f.elements.session_id.value &&
+    box.dataset.presetWod !== "wod:" + programWod.id
+  ) {
+    const preset = movementCatalog.filter(cm => programWod.movement_ids.includes(cm.id)),
+      programItems = movementsByProgram[f.elements.program_id.value] || [];
+    box.querySelectorAll("input").forEach(i => {
+      i.checked =
+        i.name === "catalog_movement_ids"
+          ? preset.some(cm => cm.id === i.value)
+          : preset.some(cm => sameMovement(programItems.find(pm => pm.id === i.value) || {name: ""}, cm));
+    });
+    box.dataset.presetWod = "wod:" + programWod.id;
+  }
   // Nouvelle séance sur un WOD de box : ses mouvements (cochés par le gestionnaire) sont cochés par défaut,
   // une seule fois par WOD choisi ; l’utilisateur peut ensuite les modifier.
   if (boxWod && !f.elements.session_id.value && box.dataset.presetWod !== boxWod.id) {
@@ -202,12 +222,25 @@ function readSessionScore() {
   }
   return {score_value: value, score_category_id: value === null ? null : f.score_category_id.value};
 }
+// Mouvement du programme correspondant à un mouvement du catalogue (même identifiant de catalogue ou même nom).
+const sameMovement = (pm, cm) =>
+  pm.catalog_movement_id === cm.id || pm.name.trim().toLowerCase() === cm.name.trim().toLowerCase();
 function renderSessionMovementChecks(pid, sessionId = "") {
   const box = $("#sessionmovementchecks"),
     programItems = movementsByProgram[pid] || [],
     fromCatalog = !programItems.length,
     items = fromCatalog ? movementCatalog : programItems,
     field = fromCatalog ? "catalog_movement_ids" : "movement_ids",
+    // Programme avec mouvements à travailler : les mouvements propres au WOD choisi (ou déjà cochés dans la
+    // séance) qui n’y figurent pas sont ajoutés en fin de liste.
+    wod = (wodsByProgram[pid] || []).find(w => w.id === $("#sessionform").elements.wod_id.value),
+    extraIds = fromCatalog
+      ? []
+      : [
+          ...(wod?.movement_ids || []),
+          ...catalogChecks.filter(c => sessionId && c.session_id === sessionId).map(c => c.catalog_movement_id),
+        ],
+    extras = movementCatalog.filter(cm => extraIds.includes(cm.id) && !programItems.some(pm => sameMovement(pm, cm))),
     // Cases déjà cochées dans le formulaire ouvert (changement de date ou de WOD) : gardées.
     ticked = new Set([...box.querySelectorAll("input:checked")].map(x => x.name + ":" + x.value)),
     isChecked = m =>
@@ -224,12 +257,19 @@ function renderSessionMovementChecks(pid, sessionId = "") {
           )
         : movementChecks.some(c => c.session_id === sessionId && c.movement_id === m.id));
   $("#sessionmovementsection").hidden = !items.length;
-  box.innerHTML = items
-    .map(
-      m =>
-        `<label class="movement-check"><input type="checkbox" name="${field}" value="${esc(m.id)}" ${isChecked(m) ? "checked" : ""}><span>${esc(m.name)}</span></label>`
-    )
-    .join("");
+  box.innerHTML =
+    items
+      .map(
+        m =>
+          `<label class="movement-check"><input type="checkbox" name="${field}" value="${esc(m.id)}" ${isChecked(m) ? "checked" : ""}><span>${esc(m.name)}</span></label>`
+      )
+      .join("") +
+    extras
+      .map(
+        m =>
+          `<label class="movement-check"><input type="checkbox" name="catalog_movement_ids" value="${esc(m.id)}" ${ticked.has("catalog_movement_ids:" + m.id) || catalogChecks.some(c => c.session_id === sessionId && c.catalog_movement_id === m.id) ? "checked" : ""}><span>${esc(m.name)}</span></label>`
+      )
+      .join("");
 }
 function openSession(s = null, presetWodId = "") {
   const f = $("#sessionform");

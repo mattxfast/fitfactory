@@ -5359,13 +5359,13 @@ button:active:not(:disabled) {
 .box-planning-wod b {
   font: 700 15px Manrope;
 }
-/* Chaque bloc du WOD (Échauffement, Force / Skill, Metcon, Finisher) séparé par un trait, titre en petites capitales. */
+/* Chaque bloc du WOD (Échauffement, Force / Skill, Metcon, Finisher) séparé par un trait épais, titre en petites capitales. */
 .box-planning-part {
   display: grid;
   gap: 2px;
   padding-top: 8px;
   margin-top: 4px;
-  border-top: 1px solid color-mix(in srgb, var(--block-color) 45%, transparent);
+  border-top: 3px solid color-mix(in srgb, var(--block-color) 70%, transparent);
   white-space: pre-line;
   font-size: 14px;
   line-height: 1.4;

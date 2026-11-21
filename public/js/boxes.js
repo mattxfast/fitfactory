@@ -363,13 +363,14 @@ function boxWodsGroup(d) {
   // Comme la page Séances : la semaine en bandeau principal (avec le ＋ « Nouveau WOD »), les WOD dessous.
   const week = managedWodWeek,
     nav = `<div class="weekbar card"><div class="weeknav"><button type="button" class="smallbtn" id="boxwodprev" aria-label="Semaine précédente" title="Semaine précédente">‹</button><div class="weekdate-label"><button type="button" class="week-current" id="boxwodthisweek" title="Revenir à la semaine en cours">Semaine du</button><input id="boxwodweek" type="date" value="${week}" aria-label="Semaine du"></div><button type="button" class="smallbtn" id="boxwodnext" aria-label="Semaine suivante" title="Semaine suivante">›</button><button type="button" class="admin-add" id="addboxwod" aria-label="Nouveau WOD" title="Nouveau WOD">＋</button></div></div>`;
-  const views = `<div class="choice-chips box-wod-views" role="radiogroup" aria-label="Affichage des WOD">${[
+  // Choix d'affichage au style des onglets de « Mon fitness » (Forme / Records / Bilans).
+  const views = `<div class="fitness-tabs" role="tablist" aria-label="Affichage des WOD">${[
     ["list", "Liste"],
     ["planning", "Planning"],
   ]
     .map(
       ([v, label]) =>
-        `<label><input type="radio" name="boxwodview" value="${v}" ${boxWodView === v ? "checked" : ""}><span>${label}</span></label>`
+        `<button type="button" role="tab" class="fitness-tab ${boxWodView === v ? "active" : ""}" aria-selected="${boxWodView === v}" data-boxwod-view="${v}">${label}</button>`
     )
     .join("")}</div>`;
   const filters = boxWodTypeChips(d);
@@ -654,10 +655,10 @@ function bindManagedBox() {
   );
   if (boxPage === "wods") {
     $("#addboxwod").onclick = () => openBoxWod();
-    root.querySelectorAll('input[name="boxwodview"]').forEach(
+    root.querySelectorAll("[data-boxwod-view]").forEach(
       i =>
-        (i.onchange = () => {
-          boxWodView = i.value;
+        (i.onclick = () => {
+          boxWodView = i.dataset.boxwodView;
           try {
             localStorage.setItem("fitfactory-boxwod-view", boxWodView);
           } catch {}

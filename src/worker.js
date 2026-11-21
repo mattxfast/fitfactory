@@ -23,6 +23,7 @@ import {
   mealAnalysisInput,
   mealInput,
 } from "./nutrition.js";
+import {FOOD_CACHE_DAYS, fetchProduct, validBarcode} from "./foodfacts.js";
 import {athleteProfileInput, computeFitness} from "./fitness.js";
 import {BENCHMARKS, benchmarkById, benchmarkOut, benchmarkMovementIds, benchmarkScore} from "./benchmarks.js";
 import {REPORT_PROMPT_VERSION, reportCoachComment} from "./report.js";
@@ -557,6 +558,12 @@ async function ensureV2Schema(env) {
       const columns = await env.DB.prepare("PRAGMA table_info(box_wods)").all();
       if (!columns.results.some(column => column.name === "blocks"))
         await env.DB.prepare("ALTER TABLE box_wods ADD COLUMN blocks TEXT").run();
+    });
+    await runMigration("v37-food-products", async () => {
+      // Produits scannés : fiches Open Food Facts gardées 30 jours (données publiques, partagées entre comptes).
+      await env.DB.prepare(
+        "CREATE TABLE IF NOT EXISTS food_products (barcode TEXT PRIMARY KEY, data TEXT NOT NULL, fetched_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
+      ).run();
     });
   })().catch(err => {
     schemaReady = null;
@@ -2245,13 +2252,31 @@ async function api(r, e, p, ctx = null) {
       .bind(
         uid(),
         u.id,
-        JSON.stringify({items: a.items, note: a.note, photo: !!a.photo}),
+        JSON.stringify({items: a.items, known: a.known, note: a.note, photo: !!a.photo}),
         JSON.stringify(out.raw),
         MEAL_PROMPT_VERSION,
         out.model
       )
       .run();
     return json({analysis: out.analysis});
+  }
+  // Produit emballé par code-barres : fiche Open Food Facts, gardée 30 jours en base.
+  if (r.method === "GET" && (m = p.match(/^\/api\/food-products\/([^/]+)$/))) {
+    const code = m[1];
+    if (!validBarcode(code)) return json({error: "Code-barres invalide (8 à 14 chiffres)."}, 400);
+    const cached = await e.DB.prepare("SELECT data FROM food_products WHERE barcode=? AND fetched_at>datetime('now',?)")
+      .bind(code, "-" + FOOD_CACHE_DAYS + " days")
+      .first();
+    if (cached) return json({product: JSON.parse(cached.data)});
+    const out = await fetchProduct(e, code);
+    if (out.missing) return json({error: "Produit introuvable dans Open Food Facts."}, 404);
+    if (out.error) return json({error: out.error}, 502);
+    await e.DB.prepare(
+      "INSERT INTO food_products(barcode,data,fetched_at) VALUES(?,?,CURRENT_TIMESTAMP) ON CONFLICT(barcode) DO UPDATE SET data=excluded.data,fetched_at=CURRENT_TIMESTAMP"
+    )
+      .bind(code, JSON.stringify(out.product))
+      .run();
+    return json({product: out.product});
   }
   if (r.method === "GET" && p === "/api/meals") {
     const q = new URL(r.url).searchParams,

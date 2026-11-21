@@ -2,7 +2,7 @@
 // repas enregistrés. La photo n'est jamais conservée : elle n'est transmise qu'à l'API OpenAI le temps de l'analyse.
 import {openAIJson} from "./ai.js";
 
-export const MEAL_PROMPT_VERSION = "repas-v1";
+export const MEAL_PROMPT_VERSION = "repas-v2";
 export const MEAL_DAILY_LIMIT = 50; // analyses par utilisateur et par 24 h (maîtrise du coût)
 export const MEAL_MAX_ITEMS = 30;
 export const MEAL_PHOTO_MAX = 2_000_000; // longueur maximale de l'image encodée (data URL), après réduction côté front
@@ -26,10 +26,10 @@ const text = (v, max) =>
     .slice(0, max);
 const validDate = s => /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(s));
 const validTime = s => /^([01]\d|2[0-3]):[0-5]\d$/.test(s);
-// Valeur nutritionnelle : nombre positif arrondi au dixième (plafonné pour écarter les valeurs aberrantes).
+// Valeur nutritionnelle : nombre positif arrondi au centième (plafonné pour écarter les valeurs aberrantes).
 const amount = (v, max) => {
   const n = Number(v);
-  return Number.isFinite(n) && n >= 0 ? Math.round(Math.min(n, max) * 10) / 10 : 0;
+  return Number.isFinite(n) && n >= 0 ? Math.round(Math.min(n, max) * 100) / 100 : 0;
 };
 
 // Demande d'analyse : une photo et/ou des aliments avec leur quantité, et une précision libre facultative.
@@ -42,7 +42,12 @@ export function mealAnalysisInput(b) {
   if (photo && (photo.length > MEAL_PHOTO_MAX || !/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(photo)))
     return {error: "Photo invalide ou trop lourde."};
   if (!photo && !items.length) return {error: "Ajoute une photo ou au moins un aliment."};
-  return {items, photo, note: text(b.note, 300)};
+  // Produits scannés du même repas : déjà comptés (valeurs de l'étiquette), l'IA ne doit pas les reprendre.
+  const known = (Array.isArray(b.known) ? b.known : [])
+    .slice(0, MEAL_MAX_ITEMS)
+    .map(x => ({name: text(x?.name, 100), quantity: text(x?.quantity, 40)}))
+    .filter(x => x.name);
+  return {items, photo, note: text(b.note, 300), known};
 }
 
 const SYSTEM = `Tu es un nutritionniste. Tu estimes la composition nutritionnelle d'un repas à partir d'une photo et/ou d'une liste d'aliments avec leurs quantités.
@@ -53,6 +58,7 @@ Règles :
 - Donne pour chaque aliment la masse estimée en grammes (ou le volume converti en grammes) et ses valeurs pour cette quantité : énergie (kcal), protéines, glucides, dont sucres, lipides, dont acides gras saturés, fibres, sel (en grammes).
 - Appuie-toi sur les tables de composition usuelles (Ciqual) ; tiens compte du mode de cuisson et des matières grasses visibles (huile, beurre, sauce).
 - Les aliments cités par l'utilisateur doivent tous apparaître, avec son nom (corrige seulement l'orthographe). Ajoute ceux visibles sur la photo et non cités.
+- Les « produits déjà comptés » ont été scannés : ne les inclus jamais dans ta liste, même s'ils sont visibles sur la photo.
 - "confiance" : "bonne" si les quantités sont données, "moyenne" pour une photo nette, "faible" si la photo est ambiguë.
 - "remarques" : deux phrases au plus sur l'intérêt nutritionnel du repas pour un sportif (apport en protéines, qualité des glucides, fibres, sel…), sans jugement moral.
 - Si l'image ne montre pas de nourriture et qu'aucun aliment n'est cité, renvoie une liste d'aliments vide et explique-le dans "remarques".
@@ -90,6 +96,9 @@ export function buildMealInput(a) {
     "## Aliments saisis",
     ...(a.items.length ? a.items.map(x => "- " + x.name + (x.quantity ? " : " + x.quantity : "")) : ["Aucun."]),
     "",
+    "## Produits déjà comptés (ne pas inclure)",
+    ...(a.known?.length ? a.known.map(x => "- " + x.name + (x.quantity ? " : " + x.quantity : "")) : ["Aucun."]),
+    "",
     "Précision : " + (a.note || "aucune"),
     "Photo : " + (a.photo ? "jointe" : "aucune"),
   ];
@@ -109,10 +118,22 @@ function itemFrom(x, keys) {
     ),
   };
 }
+// Produit scanné (Open Food Facts) : code-barres, Nutri-Score et groupe NOVA conservés avec l'aliment.
+function scannedFrom(x) {
+  if (x?.source !== "off" || !/^\d{8,14}$/.test(String(x.barcode || ""))) return {};
+  const grade = String(x.nutriscore || "").toLowerCase(),
+    nova = Number(x.nova);
+  return {
+    source: "off",
+    barcode: String(x.barcode),
+    nutriscore: /^[a-e]$/.test(grade) ? grade : "",
+    nova: [1, 2, 3, 4].includes(nova) ? nova : null,
+  };
+}
 // Totaux du repas : somme des aliments (jamais repris tels quels de l'IA ou du front).
 export function mealTotals(items) {
   return Object.fromEntries(
-    Object.keys(NUTRIENTS).map(k => [k, Math.round(items.reduce((s, x) => s + x[k], 0) * 10) / 10])
+    Object.keys(NUTRIENTS).map(k => [k, Math.round(items.reduce((s, x) => s + x[k], 0) * 100) / 100])
   );
 }
 const analysisFrom = r => {
@@ -148,7 +169,9 @@ export function mealInput(b) {
   if (!validDate(date)) return {error: "Date invalide."};
   if (!validTime(time)) return {error: "Heure invalide."};
   if (!Array.isArray(b.items)) return {error: "Aliments manquants."};
-  const items = b.items.map(x => itemFrom(x, {name: "name", quantity: "quantity", grams: "grams"})).filter(x => x.name);
+  const items = b.items
+    .map(x => ({...itemFrom(x, {name: "name", quantity: "quantity", grams: "grams"}), ...scannedFrom(x)}))
+    .filter(x => x.name);
   if (!items.length) return {error: "Le repas doit contenir au moins un aliment."};
   if (items.length > MEAL_MAX_ITEMS) return {error: MEAL_MAX_ITEMS + " aliments au plus par repas."};
   return {

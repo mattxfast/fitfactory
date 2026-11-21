@@ -3666,6 +3666,10 @@ button:disabled {
 #view-sessions #sessiontoolbar {
   margin: var(--section-content-gap) 0;
 }
+/* Interface simplifiée : mouvements travaillés sous l'historique, au même écart que les autres rubriques. */
+#view-sessions #weekafter > .session-fold {
+  margin-top: var(--section-content-gap);
+}
 #view-sessions #sessionlist {
   margin: 0;
 }

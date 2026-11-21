@@ -292,17 +292,20 @@ function renderWeek() {
     to = addDays(from, 6),
     future = from > mondayOf(now),
     dateInput = addDays(from, 0);
-  const p = programForDate(from);
+  // Interface simplifiée : ni programme, ni rubriques de WOD (programmation, box, WOD du jour) ; les mouvements
+  // travaillés passent sous l’historique (#weekafter).
+  const simple = simpleInterface(),
+    p = simple ? null : programForDate(from);
   const week = sessions.filter(x => x.session_date >= from && x.session_date <= to);
   const folded = window.cfSessionFolded || (window.cfSessionFolded = new Set());
   const nav = `<div class="weeknav"><button class="smallbtn" id="prevweek" aria-label="Semaine précédente" title="Semaine précédente">‹</button><div class="weekdate-label"><button type="button" class="week-current" id="thisweek" title="Revenir à la semaine en cours">Semaine du</button><input id="weekdate" type="date" value="${dateInput}" max="${now}" aria-label="Semaine du"></div><button class="smallbtn" id="nextweek" aria-label="Semaine suivante" title="Semaine suivante">›</button></div>`;
   if (future && (!p || isFallbackProgram(p))) {
     $("#weekboard").innerHTML =
-      `<div class="weekbar card">${nav}</div><div class="card empty">Cette semaine est dans le futur. La saisie d’entraînements n’est pas autorisée.</div>${weekProgramSection(null, week, folded, from)}${weekBoxSection(week, folded)}${weekDailySection(from, folded)}${weekMovementsSection(week, [], folded)}`;
+      `<div class="weekbar card">${nav}</div><div class="card empty">Cette semaine est dans le futur. La saisie d’entraînements n’est pas autorisée.</div>${simple ? "" : weekProgramSection(null, week, folded, from) + weekBoxSection(week, folded) + weekDailySection(from, folded) + weekMovementsSection(week, [], folded)}`;
   } else if (!p || isFallbackProgram(p)) {
     // Semaine sans programme : les séances sont enregistrées « hors programme ».
     $("#weekboard").innerHTML =
-      `<div class="weekbar card">${nav}</div><div class="weekstats card"><div class="weekstat weekstat-sessions"><strong>${week.length}</strong><span>Nombre de séances</span></div><button id="addsession" class="primary addsession-compact" aria-label="Ajouter une séance" title="Ajouter une séance">＋</button><label class="competition-toggle"><span>Comp</span><input type="checkbox" id="weekcompetition" ${weekCompetition ? "checked" : ""}></label></div>${weekProgramSection(null, week, folded, from)}${weekBoxSection(week, folded)}${weekDailySection(from, folded)}${weekMovementsSection(week, [], folded)}`;
+      `<div class="weekbar card">${nav}</div><div class="weekstats card"><div class="weekstat weekstat-sessions"><strong>${week.length}</strong><span>Nombre de séances</span></div><button id="addsession" class="primary addsession-compact" aria-label="Ajouter une séance" title="Ajouter une séance">＋</button><label class="competition-toggle"><span>Comp</span><input type="checkbox" id="weekcompetition" ${weekCompetition ? "checked" : ""}></label></div>${simple ? "" : weekProgramSection(null, week, folded, from) + weekBoxSection(week, folded) + weekDailySection(from, folded) + weekMovementsSection(week, [], folded)}`;
   } else {
     const ws = visibleWods(p.id),
       countFor = w => week.filter(x => x.wod_id === w.id).length,
@@ -311,7 +314,8 @@ function renderWeek() {
     $("#weekboard").innerHTML =
       `<div class="weekbar card">${nav}</div><div class="weekstats card"><div class="weekstat weekstat-sessions"><strong>${week.length}</strong><span>Nombre de séances</span></div><div class="weekstat weekstat-program"><strong>${done.length}/${ws.length}</strong><span>Nombre de séances de la programmation</span></div><button id="addsession" class="primary addsession-compact" aria-label="Ajouter une séance" title="Ajouter une séance" ${future ? "disabled" : ""}>＋</button><label class="competition-toggle"><span>Comp</span><input type="checkbox" id="weekcompetition" ${weekCompetition ? "checked" : ""}></label></div>${weekProgramSection(p, week, folded, from)}${weekBoxSection(week, folded)}${weekDailySection(from, folded)}${weekMovementsSection(week, programMovements, folded)}`;
   }
-  $("#weekboard")
+  $("#weekafter").innerHTML = simple ? weekMovementsSection(week, [], folded) : "";
+  $("#view-sessions")
     .querySelectorAll("[data-session-fold]")
     .forEach(section => {
       const button = section.querySelector(".section-collapse");

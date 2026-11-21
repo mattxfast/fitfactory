@@ -484,6 +484,12 @@ async function ensureV2Schema(env) {
       if (!has("fixed_kind")) await env.DB.prepare("ALTER TABLE personal_records ADD COLUMN fixed_kind TEXT").run();
       if (!has("fixed_value")) await env.DB.prepare("ALTER TABLE personal_records ADD COLUMN fixed_value REAL").run();
     });
+    await runMigration("v30-interface-mode", async () => {
+      // Interface du compte : « advanced » (complète) ou « simple » (séances sans programmes ni rubriques de WOD).
+      const columns = await env.DB.prepare("PRAGMA table_info(users)").all();
+      if (!columns.results.some(column => column.name === "interface_mode"))
+        await env.DB.prepare("ALTER TABLE users ADD COLUMN interface_mode TEXT NOT NULL DEFAULT 'advanced'").run();
+    });
   })().catch(err => {
     schemaReady = null;
     throw err;
@@ -496,6 +502,8 @@ const REMINDER_DAYS = [2, 3, 4, 5, 7],
 // Réglages par défaut définis par un administrateur (table app_settings) : thème et rappels des comptes qui n'ont
 // rien choisi. Le thème et les rappels sont propres à chaque compte, quel que soit l'appareil.
 const THEMES = ["light", "dark", "massilia", "massilia2"];
+// Interface du compte : complète (« advanced », par défaut) ou simplifiée (« simple »).
+const INTERFACES = ["advanced", "simple"];
 async function appDefaults(e) {
   const rows = (
       await e.DB.prepare(
@@ -1535,12 +1543,15 @@ async function api(r, e, p) {
     }
     return json({error: "Route admin inconnue."}, 404);
   }
-  // Préférences du compte : thème (null = thème par défaut de l'administrateur) et rappels.
+  // Préférences du compte : thème (null = thème par défaut de l'administrateur), interface (avancée ou simplifiée) et rappels.
   if (r.method === "GET" && p === "/api/preferences") {
     const st = await userReminders(e, u.id),
-      row = await e.DB.prepare("SELECT theme,box_prompt_dismissed FROM users WHERE id=?").bind(u.id).first();
+      row = await e.DB.prepare("SELECT theme,box_prompt_dismissed,interface_mode FROM users WHERE id=?")
+        .bind(u.id)
+        .first();
     return json({
       theme: THEMES.includes(row?.theme) ? row.theme : null,
+      interface: row?.interface_mode === "simple" ? "simple" : "advanced",
       box_prompt_dismissed: row?.box_prompt_dismissed ? 1 : 0,
       default_theme: st.defaults.theme,
       reminders: {enabled: st.enabled, days: st.days, hour: st.hour},
@@ -1549,10 +1560,14 @@ async function api(r, e, p) {
   }
   if (r.method === "PUT" && p === "/api/preferences") {
     const b = await r.json();
+    if (b.interface !== undefined && !INTERFACES.includes(b.interface))
+      return json({error: "Interface invalide."}, 400);
     if (b.theme !== undefined) {
       if (b.theme !== null && !THEMES.includes(b.theme)) return json({error: "Thème invalide."}, 400);
       await e.DB.prepare("UPDATE users SET theme=? WHERE id=?").bind(b.theme, u.id).run();
     }
+    if (b.interface !== undefined)
+      await e.DB.prepare("UPDATE users SET interface_mode=? WHERE id=?").bind(b.interface, u.id).run();
     if (b.reminders) {
       const error = await saveReminderSettings(e, u.id, b.reminders);
       if (error) return json({error}, 400);

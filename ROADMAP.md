@@ -43,6 +43,7 @@ Prochain numéro libre : **35**
 - [x] **32.** PR Engine en « temps sur une distance » ou « distance dans un temps » (allure au km / au 500 m, historique, courbe) et pilier Engine du score de forme. — fait le 20/11/2026
 - [ ] **33.** Widget iOS (écran d'accueil / écran verrouillé) : WOD du jour, prochaine séance, séances de la semaine. Demande une vraie app iPhone (Swift, WidgetKit) en plus de l'app web, un compte Apple Developer (99 €/an) et une connexion par jeton pour l'app native. *À décider par Matt.*
 - [ ] **34.** Application Apple Watch : chrono de WOD au poignet (rounds, EMOM, Tabata) avec vibrations, WOD du jour affiché, séance enregistrée à la fin. Même prérequis que l'idée 33 (app native, compte Apple Developer) ; à faire avec ou après le widget. *À décider par Matt.*
+- [x] **35.** Interface simplifiée, au choix dans Mon compte → Apparence : page Séances réduite à l'historique puis aux mouvements travaillés (sans rubriques WOD de la programmation, de la box ni WOD du jour), onglet Programmes masqué ; le formulaire de séance propose toujours tous les WOD. — fait le 21/11/2026
 
 ## Look and feel
 

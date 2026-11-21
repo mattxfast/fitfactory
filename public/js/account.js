@@ -79,8 +79,30 @@ function setPreferences(d) {
     d.choices.themes.map(t => `<option value="${t}">${esc(THEME_NAMES[t] || t)}</option>`).join("");
   select.value = d.theme || "default";
   cacheTheme(d.theme || d.default_theme);
+  $("#interfaceselect").value = simpleInterface() ? "simple" : "advanced";
+  applyInterface();
   renderReminders();
 }
+// Interface simplifiée : pas d’onglet Programmes ; la page Séances ne garde que l’historique et les mouvements
+// travaillés (sessions.js). Le formulaire de séance propose toujours tous les WOD.
+const simpleInterface = () => preferences?.interface === "simple";
+function applyInterface() {
+  const simple = simpleInterface();
+  $('.navtab[data-view="programs"]').hidden = simple;
+  if (simple && !$("#view-programs").hidden) switchView("sessions");
+}
+$("#interfaceselect").onchange = async e => {
+  const value = e.target.value === "simple" ? "simple" : "advanced";
+  if (preferences) preferences.interface = value;
+  applyInterface();
+  renderWeek();
+  try {
+    await api("/preferences", {method: "PUT", body: JSON.stringify({interface: value})});
+    toast(value === "simple" ? "Interface simplifiée activée." : "Interface avancée activée.");
+  } catch (x) {
+    toast(x.offline ? OFFLINE_MESSAGE : x.message);
+  }
+};
 $("#themeselect").onchange = async e => {
   const theme = e.target.value === "default" ? null : e.target.value;
   cacheTheme(theme || preferences?.default_theme || "dark");

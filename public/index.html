@@ -695,21 +695,22 @@
                 placeholder="Ex. : haltéro technique + metcon gym suspendue…"
               ></textarea>
             </label>
-            <div class="movement-editor">
-              <details id="wodmovementdetails" class="movement-fold">
-                <summary>
-                  <h3>Mouvements à travailler</h3>
-                  <span id="wodmovementcount"></span>
-                </summary>
-                <div id="wodmovements"></div>
-              </details>
-            </div>
           </section>
           <section class="form-block">
             <h3>Programmation</h3>
             <label class="checkbox-label"
               ><input type="checkbox" name="is_tracked" /> Entraînement suivi (programmation semaine par semaine)</label
             >
+          </section>
+          <!-- Mouvements à travailler du WOD : bloc à part, comme « Focus mouvement » dans l’enregistrement d’une séance. -->
+          <section class="form-block">
+            <details id="wodmovementdetails" class="movement-fold">
+              <summary>
+                <h3>Focus mouvement</h3>
+                <span id="wodmovementcount"></span>
+              </summary>
+              <div id="wodmovements"></div>
+            </details>
           </section>
           <!-- Activité et durée masquées pour l’instant : renseignées par défaut (activité par défaut, sa durée). -->
           <div class="two" hidden>

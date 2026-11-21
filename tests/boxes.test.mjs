@@ -552,3 +552,27 @@ test("fenêtre d'accueil des box : « Je ne suis dans aucune box » enregistré 
   await other.post("/login", {email: "hugo@test.local", password: PASSWORD});
   assert.equal((await other.get("/preferences")).data.box_prompt_dismissed, 1);
 });
+
+test("WOD de box en blocs : échauffement, force / skill, metcon, finisher, texte complet pour les membres", async () => {
+  const day = today(),
+    created = await alice.post(`/manage/boxes/${boxId}/wods`, {
+      wod_date: day,
+      score_type: "time",
+      blocks: {warmup: "3 rounds : 200 m run", strength: "", metcon: "21-15-9 Thrusters", finisher: "Gainage 3 × 1'"},
+    });
+  assert.equal(created.status, 200, JSON.stringify(created.data));
+  const mine = (await alice.get(`/manage/boxes/${boxId}/wods?from=${day}&to=${day}`)).data.wods.find(
+    w => w.id === created.data.id
+  );
+  assert.equal(JSON.parse(mine.blocks).metcon, "21-15-9 Thrusters");
+  const seen = (await bob.get(`/box-wods?from=${day}&to=${day}`)).data.wods.find(w => w.id === created.data.id);
+  assert.equal(
+    seen.content,
+    "Échauffement\n3 rounds : 200 m run\n\nMetcon\n21-15-9 Thrusters\n\nFinisher\nGainage 3 × 1'"
+  );
+  // sans blocs (ancien format), le contenu libre reste accepté
+  await alice.put(`/manage/wods/${created.data.id}`, {wod_date: day, score_type: "time", content: "Libre"});
+  const after = (await bob.get(`/box-wods?from=${day}&to=${day}`)).data.wods.find(w => w.id === created.data.id);
+  assert.equal(after.content, "Libre");
+  assert.equal((await alice.del(`/manage/wods/${created.data.id}`)).status, 200);
+});

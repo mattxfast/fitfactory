@@ -552,6 +552,12 @@ async function ensureV2Schema(env) {
         ),
       ]);
     });
+    await runMigration("v36-box-wod-blocks", async () => {
+      // Blocs d'un WOD de box (échauffement, force / skill, metcon, finisher), en JSON ; content garde le texte complet.
+      const columns = await env.DB.prepare("PRAGMA table_info(box_wods)").all();
+      if (!columns.results.some(column => column.name === "blocks"))
+        await env.DB.prepare("ALTER TABLE box_wods ADD COLUMN blocks TEXT").run();
+    });
   })().catch(err => {
     schemaReady = null;
     throw err;
@@ -1121,6 +1127,32 @@ const dailyWodOut = x => ({
 // WOD de box : nom facultatif (« WOD du JJ/MM/AAAA » par défaut), date, contenu et type de score.
 const SCORE_TYPES = ["time", "reps", "load", "none"];
 const frenchDate = d => d.slice(8, 10) + "/" + d.slice(5, 7) + "/" + d.slice(0, 4);
+// Blocs d'un WOD de box, dans l'ordre de la séance. Le texte complet (content) les reprend avec leur titre :
+// c'est lui qui est montré aux membres et repris dans « Réalisé / notes ».
+const BOX_WOD_BLOCKS = [
+  ["warmup", "Échauffement"],
+  ["strength", "Force / Skill"],
+  ["metcon", "Metcon"],
+  ["finisher", "Finisher"],
+];
+function boxWodBlocks(input) {
+  if (!input || typeof input !== "object") return null;
+  const blocks = Object.fromEntries(
+    BOX_WOD_BLOCKS.map(([key]) => [
+      key,
+      String(input[key] || "")
+        .slice(0, 2000)
+        .replace(/\s+$/, ""),
+    ])
+  );
+  return {
+    blocks,
+    content: BOX_WOD_BLOCKS.filter(([key]) => blocks[key].trim())
+      .map(([key, label]) => label + "\n" + blocks[key])
+      .join("\n\n")
+      .slice(0, 8000),
+  };
+}
 // Type de WOD : celui choisi (s'il appartient à la box), sinon le premier de la liste (« WOD » par défaut).
 // Nom par défaut : « <type> du JJ/MM/AAAA ».
 async function boxWodInput(e, boxId, b) {
@@ -1142,7 +1174,9 @@ async function boxWodInput(e, boxId, b) {
     type,
     typeId: wodType?.id || null,
     name: boxText(b.name, 100) || (wodType?.name || "WOD") + " du " + frenchDate(date),
-    content: String(b.content || "").slice(0, 3000),
+    ...(boxWodBlocks(b.blocks)
+      ? (({blocks, content}) => ({blocks: JSON.stringify(blocks), content}))(boxWodBlocks(b.blocks))
+      : {blocks: null, content: String(b.content || "").slice(0, 3000)}),
   };
 }
 // Mouvements d'un WOD de box : remplace la liste par les mouvements du catalogue envoyés (inconnus ignorés).
@@ -2047,7 +2081,7 @@ async function api(r, e, p, ctx = null) {
         const range = wodRange(r);
         if (!range) return json({error: "Période invalide."}, 400);
         const x = await e.DB.prepare(
-          "SELECT w.id,w.box_id,w.wod_date,w.name,w.content,w.score_type,w.type_id,t.name AS type_name," +
+          "SELECT w.id,w.box_id,w.wod_date,w.name,w.content,w.blocks,w.score_type,w.type_id,t.name AS type_name," +
             WOD_MOVEMENTS +
             " FROM box_wods w LEFT JOIN box_wod_types t ON t.id=w.type_id WHERE w.box_id=? AND w.wod_date>=? AND w.wod_date<=? ORDER BY w.wod_date,t.sort_order,w.created_at"
         )
@@ -2062,8 +2096,8 @@ async function api(r, e, p, ctx = null) {
       if (input.error) return json({error: input.error}, 400);
       await e.DB.batch([
         e.DB.prepare(
-          "INSERT INTO box_wods(id,box_id,wod_date,name,content,score_type,type_id,created_by) VALUES(?,?,?,?,?,?,?,?)"
-        ).bind(id, m[1], input.date, input.name, input.content, input.type, input.typeId, u.id),
+          "INSERT INTO box_wods(id,box_id,wod_date,name,content,blocks,score_type,type_id,created_by) VALUES(?,?,?,?,?,?,?,?,?)"
+        ).bind(id, m[1], input.date, input.name, input.content, input.blocks, input.type, input.typeId, u.id),
         ...(await boxWodMovementStatements(e, id, b.catalog_movement_ids)),
       ]);
       return json({ok: true, id});
@@ -2085,8 +2119,8 @@ async function api(r, e, p, ctx = null) {
       if (input.error) return json({error: input.error}, 400);
       await e.DB.batch([
         e.DB.prepare(
-          "UPDATE box_wods SET wod_date=?,name=?,content=?,score_type=?,type_id=?,updated_at=CURRENT_TIMESTAMP WHERE id=?"
-        ).bind(input.date, input.name, input.content, input.type, input.typeId, m[1]),
+          "UPDATE box_wods SET wod_date=?,name=?,content=?,blocks=?,score_type=?,type_id=?,updated_at=CURRENT_TIMESTAMP WHERE id=?"
+        ).bind(input.date, input.name, input.content, input.blocks, input.type, input.typeId, m[1]),
         ...(b.catalog_movement_ids === undefined
           ? []
           : await boxWodMovementStatements(e, m[1], b.catalog_movement_ids)),

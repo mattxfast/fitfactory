@@ -4138,7 +4138,8 @@ button:disabled {
 .fitness-tabs {
   grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-auto-flow: column; /* onglets de même largeur sur toute la ligne, quel que soit leur nombre */
+  grid-auto-columns: 1fr;
   gap: 4px;
   padding: 4px;
   margin-bottom: var(--page-content-gap);

@@ -314,6 +314,18 @@ function managerWodTitle(w) {
     : wodDay(w.wod_date) + " · " + boxWodLabel(w);
 }
 // WOD de la box : navigation par semaine (WOD passés et à venir), ajout, modification, suppression.
+// Blocs d’un WOD de box (mêmes titres que le serveur) ; le texte complet les reprend avec leur titre, c’est lui que
+// voient les membres et qui pré-remplit « Réalisé / notes » de leur séance.
+const BOX_WOD_BLOCKS = [
+  ["warmup", "Échauffement"],
+  ["strength", "Force / Skill"],
+  ["metcon", "Metcon"],
+  ["finisher", "Finisher"],
+];
+const boxWodContent = blocks =>
+  BOX_WOD_BLOCKS.filter(([key]) => String(blocks[key] || "").trim())
+    .map(([key, label]) => label + "\n" + String(blocks[key]).replace(/\s+$/, ""))
+    .join("\n\n");
 // Vue de la page WOD : liste (téléphone) ou planning de la semaine (une colonne par jour, pratique sur PC).
 // Choix gardé sur l’appareil.
 let boxWodView = (() => {
@@ -402,7 +414,13 @@ function openBoxWod(w = null, presetDate = "") {
   f.elements.name.value = w?.name && w.name !== defaultWodName(w.wod_date, w.type_name) ? w.name : "";
   syncBoxWodPlaceholder();
   f.elements.score_type.value = w?.score_type || "time";
-  f.elements.content.value = w?.content || "";
+  // Blocs du WOD ; un WOD saisi avant les blocs a tout son contenu dans « Metcon ».
+  let blocks = null;
+  try {
+    blocks = w?.blocks ? JSON.parse(w.blocks) : null;
+  } catch {}
+  if (!blocks && w?.content) blocks = {metcon: w.content};
+  for (const [key] of BOX_WOD_BLOCKS) f.elements["block_" + key].value = blocks?.[key] || "";
   // Mouvements du catalogue travaillés dans ce WOD : cochés par défaut dans la séance des membres.
   const ticked = new Set(w?.movement_ids || []);
   $("#boxwodmovements").innerHTML =
@@ -441,7 +459,10 @@ $("#boxwodform").onsubmit = async e => {
       name: f.name.value.trim(),
       score_type: f.score_type.value,
       type_id: f.type_id.value || undefined,
-      content: f.content.value,
+      ...(() => {
+        const blocks = Object.fromEntries(BOX_WOD_BLOCKS.map(([key]) => [key, f["block_" + key].value]));
+        return {blocks, content: boxWodContent(blocks)};
+      })(),
       catalog_movement_ids: [...e.target.querySelectorAll('input[name="catalog_movement_ids"]:checked')].map(
         x => x.value
       ),
